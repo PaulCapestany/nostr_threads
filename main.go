@@ -39,11 +39,6 @@ func main() {
 	}
 	defer cluster.Close(nil)
 
-	// // Open the bucket
-	// bucket := cluster.Bucket("strfry-data")
-	// scope := bucket.Scope("_default")
-	// scope.Collection("_default")
-
 	messageFetcher([]string{messageID}, cluster)
 
 	sort.Slice(allUniqueThreadMessages, func(i, j int) bool {
@@ -64,11 +59,13 @@ func messageFetcher(messageIDs []string, cluster *gocb.Cluster) {
 
 	for _, messageID := range messageIDs {
 		query := fmt.Sprintf(`
-			SELECT d.*
-			FROM _default AS d
-			USE KEYS "%s"
-			UNION
 			WITH referencedMessages AS (
+				SELECT d.*
+				FROM `+"`_default`"+` AS d
+				USE KEYS "%s"
+
+				UNION
+				
 				SELECT refMessage.*
 				FROM _default AS refMessage
 				USE INDEX (kind_and_event_lookup USING GSI)
@@ -78,15 +75,15 @@ func messageFetcher(messageIDs []string, cluster *gocb.Cluster) {
 			FROM referencedMessages AS message
 		`, messageID, messageID)
 
-		rows, err := cluster.Query(query, nil)
+		result, err := cluster.Query(query, nil)
 		if err != nil {
 			fmt.Printf("Error executing query: %v\n", err)
 			continue
 		}
 
-		for rows.Next() {
+		for result.Next() {
 			var message Message
-			err := rows.Row(&message)
+			err := result.Row(&message)
 			if err != nil {
 				fmt.Printf("Error scanning row: %v\n", err)
 				continue
@@ -97,7 +94,9 @@ func messageFetcher(messageIDs []string, cluster *gocb.Cluster) {
 			}
 		}
 
-		rows.Close()
+		if err := result.Err(); err != nil {
+			fmt.Printf("Error iterating query result: %v\n", err)
+		}
 	}
 
 	allUniqueThreadMessages = append(allUniqueThreadMessages, uniqueThreadMessages...)

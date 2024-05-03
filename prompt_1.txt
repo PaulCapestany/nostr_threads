@@ -2,16 +2,18 @@ Please create a CLI program written in Go that follows all the requirements in t
 
 We start nostr_threads with just one Message "id" as our input (passed in via stdin as an argument) which must be considered to be in any part of a nested thread of messages (meaning: it could be the first/original message, it could be a reply, it could be a reply to a reply, etc). We'll pass this "id" to a "messageFetcher" function as a slice of just that one "id". 
 
-The "messageFetcher" function takes as input a slice containing one or more unique message "id"s. For each "id" it calls a "referencedMessages" query with that "id". Results from the query should be output into a local/temporary "uniqueThreadMessages" slice of Message only if the Messsage "kind" == 1, also, if and only if there does not already exist a Message with the same "id" in that slice, and if and only if the Messsage (based on its "id") was not already in a global "allUniqueThreadMessages" slice of Message. For each Message in "uniqueThreadMessages" we check every tag within the "tags" array that contains tag[0] == "e" (for shorthand we can refer to these as etags) and for those matching etags we gather up all the tag[1] strings into a slice (these are Message "id"s) that we call "messageIDsToQuery". We check each messageIDsToQuery "id" against each "id" of each "allUniqueThreadMessages" Message, and if a Message with matching "id" was already present, we remove that "id" from the messageIDsToQuery slice. Next, we pass this messageIDsToQuery back into "messageFetcher", and continue this process to fully populate "allUniqueThreadMessages" until there are no more queries to be made because there are no more "id"s of messages to fetch. Considering the recursive nature of this function, you must properly handle potential edge cases, such as circular references or extremely deep nesting, to avoid stack overflow or excessive resource consumption.
+The "messageFetcher" function takes as input a slice containing one or more unique message "id"s. For each "id" it calls a "referencedMessages" query with that "id". Results from the query should be output into a local/temporary "uniqueThreadMessages" slice of Message only if the Messsage "kind" == 1, also, if and only if there does not already exist a Message with the same "id" in that slice, and if and only if the Messsage (based on its "id") was not already in a global "allUniqueThreadMessages" slice of Message. For each Message in "uniqueThreadMessages" we check every tag within the "tags" array that contains tag[0] == "e" (for shorthand we can refer to these as etags) and for those matching etags we gather up all the tag[1] strings into a slice (these are Message "id"s) that we call "messageIDsToQuery". We check each messageIDsToQuery "id" against each "id" of each "allUniqueThreadMessages" Message, and if a Message with matching "id" was already present, we remove that "id" from the messageIDsToQuery slice. Next, we pass this messageIDsToQuery back into "messageFetcher", and continue this process to fully populate "allUniqueThreadMessages" until there are no more queries to be made because there are no more "id"s of messages to fetch. Considering the recursive nature of this function, you unequivocally, absolutely, *MUST* properly handle potential edge cases, especially potential circular references or extremely deep nesting, in order to avoid stack overflow or excessive resource consumption.
 
 The following is an example of the Couchbase SQL++ you will use within nostr_threads (with appropriate replacement of "messageIDtoQuery" to properly execute the query):
 
 -- "referencedMessages" query
-SELECT d.*
-FROM `_default` AS d
-USE KEYS "messageIDtoQuery"
-UNION
 WITH referencedMessages AS (
+	SELECT d.*
+	FROM `_default` AS d
+	USE KEYS "messageIDtoQuery"
+
+	UNION
+	
 	SELECT refMessage.*
 	FROM _default AS refMessage
 	USE INDEX (kind_and_event_lookup USING GSI)
