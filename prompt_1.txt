@@ -1,0 +1,28 @@
+Please create a CLI program written in Go that follows all the requirements in this prompt. For context, the overall purpose of the program is to gather all unique messages that are part of a discussion thread from a Couchbase database, with which we interact with via an SQL++ query (which is shown later in this prompt, and whose query results return JSON, an example of which will also be provided later in this same prompt). We must use the Go package "github.com/couchbase/gocb/v2" to interact with Couchbase. For shorthand, lets call the program we will be creating "nostr_threads". All requirements for nostr_threads must be fulfilled with fully functioning code; meaning, NO placeholders or comments about implementation logic without functioning code are allowed, we must have a complete program that can run successfully, has appropriate error handling, uses Golang's best practices, etc.
+
+We start nostr_threads with just one Message "id" as our input (passed in via stdin as an argument) which must be considered to be in any part of a nested thread of messages (meaning: it could be the first/original message, it could be a reply, it could be a reply to a reply, etc). We'll pass this "id" to a "messageFetcher" function as a slice of just that one "id". 
+
+The "messageFetcher" function takes as input a slice containing one or more unique message "id"s. For each "id" it calls a "referencedMessages" query with that "id". Results from the query should be output into a local/temporary "uniqueThreadMessages" slice of Message only if the Messsage "kind" == 1, also, if and only if there does not already exist a Message with the same "id" in that slice, and if and only if the Messsage (based on its "id") was not already in a global "allUniqueThreadMessages" slice of Message. For each Message in "uniqueThreadMessages" we check every tag within the "tags" array that contains tag[0] == "e" (for shorthand we can refer to these as etags) and for those matching etags we gather up all the tag[1] strings into a slice (these are Message "id"s) that we call "messageIDsToQuery". We check each messageIDsToQuery "id" against each "id" of each "allUniqueThreadMessages" Message, and if a Message with matching "id" was already present, we remove that "id" from the messageIDsToQuery slice. Next, we pass this messageIDsToQuery back into "messageFetcher", and continue this process to fully populate "allUniqueThreadMessages" until there are no more queries to be made because there are no more "id"s of messages to fetch. Considering the recursive nature of this function, you must properly handle potential edge cases, such as circular references or extremely deep nesting, to avoid stack overflow or excessive resource consumption.
+
+The following is an example of the Couchbase SQL++ you will use within nostr_threads (with appropriate replacement of "messageIDtoQuery" to properly execute the query):
+
+-- "referencedMessages" query
+SELECT d.*
+FROM `_default` AS d
+USE KEYS "messageIDtoQuery"
+UNION
+WITH referencedMessages AS (
+	SELECT refMessage.*
+	FROM _default AS refMessage
+	USE INDEX (kind_and_event_lookup USING GSI)
+	WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "messageIDtoQuery" END)
+)
+SELECT message.content, message.created_at, message.id, message.kind, message.pubkey, message.sig, message.tags
+FROM referencedMessages AS message
+--
+
+Once messageFetcher has no more "id"s of messages to fetch, please print to stdout allUniqueThreadMessages as JSON, sorted in ascending order by each message's "created_at" value. The program can then exit.
+
+Lastly, the following is an example of the JSON structure of the results returned from the "referencedMessages" query (of particular importance you should note the different types of tags, also, how when it comes to a Message's etags, there can be zero, one, or multiple etags):
+
+[{"content":"I would call it refollow.nostr.com","created_at":1708718266,"id":"00000000a25154f5c4100ddba4169d5c515962ee47e770bf784d0440a1cc28f3","kind":1,"pubkey":"7bdef7be22dd8e59f4600e044aa53a1cf975a9dc7d27df5833bc77db784a5805","sig":"69c99c1e8ce06059f32a5921f5cab8e20f48343faf937da1f503e9f2e114d12cb55f86546041255705eb19ee35974cc4d7a2fea50fec938a7510f763fb32e198","tags":[["p","3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"],["nonce","14757395258970495184","25"]]},{"id":"83d0557681ab3552a6550628b180ee7dd79db50b913a0fd5577c6ae22006327e","pubkey":"3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d","created_at":1708719399,"kind":1,"tags":[["p","7bdef7be22dd8e59f4600e044aa53a1cf975a9dc7d27df5833bc77db784a5805","wss://puravida.nostr.land/","daniele"],["e","00000000a25154f5c4100ddba4169d5c515962ee47e770bf784d0440a1cc28f3","wss://puravida.nostr.land/","reply"]],"content":"Would have been better, but now I'm too lazy to change.","sig":"ce026eb0188689f66b894b778221987a022c1e2f1132dc78e6242aeecb9e09b71382733342337e212f925b7a8e500e9c8cc043243ad071c1bdb0d82058167c93"},{"content":"Would have been better, but now I'm too lazy to change.","created_at":1708719399,"id":"83d0557681ab3552a6550628b180ee7dd79db50b913a0fd5577c6ae22006327e","kind":1,"pubkey":"3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d","sig":"ce026eb0188689f66b894b778221987a022c1e2f1132dc78e6242aeecb9e09b71382733342337e212f925b7a8e500e9c8cc043243ad071c1bdb0d82058167c93","tags":[["p","7bdef7be22dd8e59f4600e044aa53a1cf975a9dc7d27df5833bc77db784a5805","wss://puravida.nostr.land/","daniele"],["e","ad527da8187a7ca3221168cac4050d70cdfe82f9080445bca64cf8fbbffd90eb","wss://pyramid.fiatjaf.com/","root"],["e","00000000a25154f5c4100ddba4169d5c515962ee47e770bf784d0440a1cc28f3","wss://puravida.nostr.land/","reply"]]}]

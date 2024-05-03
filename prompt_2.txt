@@ -1,0 +1,18 @@
+
+if the e_tags array length == 0, then assign depth = 0 (we can refer to this as the rootID)
+
+TODO: flesh out what to do with results from following query (they might not be everything we need, might be missing messages that only refer to a reply, so would have to iterate over every non-rootID from these results with the same query [and do that recursively with any new results that come in]):
+
+
+
+
+if the e_tags array length == 1 and e_tags[1] != rootID.....?!?!?!?, then the message must be considered to be a reply to the message that has an "id" == e_tags[1] and has depth
+
+if the e_tags array length == 2, then the message must be considered to be a reply to one of the messages, check if e_tags[3] == "reply"
+
+TODO: flesh out how 
+
+and the other should be the rootIDthat has an "id" == e_tags[1]
+
+
+
