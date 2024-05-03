@@ -57,7 +57,21 @@ func main() {
 }
 
 func messageFetcher(messageIDs []string) {
+	// fmt.Println("---------- messageFetcher ----------")
+	// fmt.Println(messageIDs)
+	if cluster == nil {
+		log.Println("Cluster connection is not initialized.")
+		return
+	}
+
+	var messageIDsToQuery []string // To collect all new message IDs from tags for further queries
+
 	for _, id := range messageIDs {
+		// if containsMessage(allUniqueThreadMessages, id) {
+		// 	fmt.Println("Skipping: ", id)
+		// 	continue // Skip already processed messages
+		// }
+
 		query := fmt.Sprintf(`WITH referencedMessages AS (
 			SELECT d.*
 			FROM `+"`strfry-data`._default._default"+` AS d
@@ -79,46 +93,61 @@ func messageFetcher(messageIDs []string) {
 			continue
 		}
 
-		var uniqueThreadMessages []Message
 		for results.Next() {
 			var msg Message
 			if err := results.Row(&msg); err != nil {
 				log.Printf("Failed to parse message: %v", err)
 				continue
 			}
-			if msg.Kind != 1 || containsMessage(allUniqueThreadMessages, msg.ID) {
-				continue
+			if msg.Kind != 1 {
+				continue // Skip messages that are not of kind 1
 			}
-			uniqueThreadMessages = append(uniqueThreadMessages, msg)
-			allUniqueThreadMessages = append(allUniqueThreadMessages, msg)
-		}
+			// fmt.Println("results.Next: ", msg.ID)
 
-		if err := results.Err(); err != nil {
-			log.Printf("Error iterating results: %v", err)
-		}
+			// if !containsMessage(allUniqueThreadMessages, msg.ID) {
+			// 	messageIDsToQuery = append(messageIDsToQuery, msg.ID)
+			// 	allUniqueThreadMessages = append(allUniqueThreadMessages, msg) // Add to global slice if not already present
+			// }
 
-		// Extract and process tags
-		var messageIDsToQuery []string
-		for _, msg := range uniqueThreadMessages {
+			// Process tags to find new message IDs to query
 			for _, tag := range msg.Tags {
 				tagSlice, ok := tag.([]interface{})
 				if !ok || len(tagSlice) < 2 || tagSlice[0] != "e" {
 					continue
 				}
-				if idStr, ok := tagSlice[1].(string); ok && !containsMessage(allUniqueThreadMessages, idStr) {
+				// fmt.Println(tagSlice[1].(stsring))
+				if idStr, ok := tagSlice[1].(string); ok && !containsMessage(allUniqueThreadMessages, idStr) && !contains(messageIDsToQuery, idStr) {
 					messageIDsToQuery = append(messageIDsToQuery, idStr)
 				}
 			}
+			if !containsMessage(allUniqueThreadMessages, msg.ID) {
+				messageIDsToQuery = append(messageIDsToQuery, msg.ID)
+				allUniqueThreadMessages = append(allUniqueThreadMessages, msg) // Add to global slice if not already present
+			}
 		}
-		if len(messageIDsToQuery) > 0 {
-			messageFetcher(messageIDsToQuery)
+		if err := results.Err(); err != nil {
+			log.Printf("Error iterating results: %v", err)
 		}
+	}
+
+	// Recursively fetch messages for newly discovered IDs if there are any
+	if len(messageIDsToQuery) > 0 {
+		messageFetcher(messageIDsToQuery)
 	}
 }
 
 func containsMessage(messages []Message, id string) bool {
 	for _, msg := range messages {
 		if msg.ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+func contains(ids []string, id string) bool {
+	for _, existingID := range ids {
+		if existingID == id {
 			return true
 		}
 	}
