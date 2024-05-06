@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"reflect"
 	"sort"
 
 	"github.com/couchbase/gocb/v2"
@@ -54,6 +53,9 @@ func main() {
 	})
 
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
+	if err != nil {
+		log.Fatalf("Error with processMessageThreading: %v", err)
+	}
 
 	output, err := json.Marshal(threadedProcessedMessages)
 	if err != nil {
@@ -158,17 +160,16 @@ func contains(ids []string, id string) bool {
 func filterETags(tags []interface{}) []string {
 	var eTags []string
 	for _, tag := range tags {
-		tagSlice, ok := tag.([]string) // Convert tag to a slice of strings
-		if !ok {
-			continue
+		tagSlice, ok := tag.([]interface{})
+		if !ok || len(tagSlice) < 2 {
+			continue // Skip if it's not a slice or too short
 		}
-		if len(tagSlice) > 0 && reflect.TypeOf(tagSlice[0]).Kind() == reflect.String && tagSlice[0] == "e" {
-			etagID := ""
-			if len(tagSlice) > 1 {
-				etagID = fmt.Sprintf("%v", tagSlice[1]) // Convert to string if not already
-			}
-			eTags = append(eTags, etagID)
+		tagType, ok := tagSlice[0].(string)
+		if !ok || tagType != "e" {
+			continue // Skip if the first element is not string "e"
 		}
+		etagID := fmt.Sprintf("%v", tagSlice[1]) // Convert second element to string, regardless of its original type
+		eTags = append(eTags, etagID)
 	}
 	return eTags
 }
@@ -188,12 +189,14 @@ func findOriginalMessage(messages []Message) (Message, error) {
 // Recursive function to assign replies to the right parent and return remaining messages
 func assignReplies(parent Message, allMessages []Message) (Message, []Message) {
 	var remainingMessages []Message
+	parent.Replies = []Message{} // Ensure replies are initialized
 
 	for _, msg := range allMessages {
 		eTags := filterETags(msg.Tags)
 		if len(eTags) == 1 && eTags[0] == parent.ID {
 			msg.Depth = parent.Depth + 1
-			updatedMsg, _ := assignReplies(msg, remainingMessages) // recursively assign deeper replies
+			var updatedMsg Message
+			updatedMsg, allMessages = assignReplies(msg, allMessages) // recursively assign deeper replies
 			parent.Replies = append(parent.Replies, updatedMsg)
 		} else {
 			remainingMessages = append(remainingMessages, msg)
@@ -202,7 +205,6 @@ func assignReplies(parent Message, allMessages []Message) (Message, []Message) {
 	return parent, remainingMessages
 }
 
-// Main processing function
 func processMessageThreading(allMessages []Message) ([]Message, error) {
 	originalMessage, err := findOriginalMessage(allMessages)
 	if err != nil {
@@ -211,14 +213,9 @@ func processMessageThreading(allMessages []Message) ([]Message, error) {
 	allMessages = append(allMessages[:0], allMessages[1:]...) // remove the original message from slice
 
 	nestedThread, remaining := assignReplies(originalMessage, allMessages)
-	// Log remaining messages if they exist
 	if len(remaining) > 0 {
 		log.Printf("Remaining messages not processed: %+v\n", remaining)
-		// Optionally, you might want to handle them further here.
 	}
-
-	// Handle or process remaining messages if necessary
-	// For example, you might want to log unprocessed messages or handle them differently
 
 	return []Message{nestedThread}, nil
 }
