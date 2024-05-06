@@ -11,7 +11,7 @@ import (
 )
 
 type Message struct {
-	Content   string        `json:"content"`
+	Content   interface{}   `json:"content"`
 	CreatedAt int64         `json:"created_at"`
 	ID        string        `json:"id"`
 	Kind      int           `json:"kind"`
@@ -57,8 +57,6 @@ func main() {
 }
 
 func messageFetcher(messageIDs []string) {
-	// fmt.Println("---------- messageFetcher ----------")
-	// fmt.Println(messageIDs)
 	if cluster == nil {
 		log.Println("Cluster connection is not initialized.")
 		return
@@ -67,11 +65,6 @@ func messageFetcher(messageIDs []string) {
 	var messageIDsToQuery []string // To collect all new message IDs from tags for further queries
 
 	for _, id := range messageIDs {
-		// if containsMessage(allUniqueThreadMessages, id) {
-		// 	fmt.Println("Skipping: ", id)
-		// 	continue // Skip already processed messages
-		// }
-
 		query := fmt.Sprintf(`WITH referencedMessages AS (
 			SELECT d.*
 			FROM `+"`strfry-data`._default._default"+` AS d
@@ -102,12 +95,10 @@ func messageFetcher(messageIDs []string) {
 			if msg.Kind != 1 {
 				continue // Skip messages that are not of kind 1
 			}
-			// fmt.Println("results.Next: ", msg.ID)
 
-			// if !containsMessage(allUniqueThreadMessages, msg.ID) {
-			// 	messageIDsToQuery = append(messageIDsToQuery, msg.ID)
-			// 	allUniqueThreadMessages = append(allUniqueThreadMessages, msg) // Add to global slice if not already present
-			// }
+			// Convert content to string regardless of its original type
+			contentStr := fmt.Sprintf("%v", msg.Content)
+			msg.Content = contentStr
 
 			// Process tags to find new message IDs to query
 			for _, tag := range msg.Tags {
@@ -115,7 +106,6 @@ func messageFetcher(messageIDs []string) {
 				if !ok || len(tagSlice) < 2 || tagSlice[0] != "e" {
 					continue
 				}
-				// fmt.Println(tagSlice[1].(stsring))
 				if idStr, ok := tagSlice[1].(string); ok && !containsMessage(allUniqueThreadMessages, idStr) && !contains(messageIDsToQuery, idStr) {
 					messageIDsToQuery = append(messageIDsToQuery, idStr)
 				}
