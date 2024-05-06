@@ -156,66 +156,121 @@ func contains(ids []string, id string) bool {
 // The following deals with nesting/threading of messages //
 // -------------------------------------------------------//
 
-// Helper function to convert any tag to a string, and filter e-tags
-func filterETags(tags []interface{}) []string {
-	var eTags []string
-	for _, tag := range tags {
-		tagSlice, ok := tag.([]interface{})
-		if !ok || len(tagSlice) < 2 {
-			continue // Skip if it's not a slice or too short
-		}
-		tagType, ok := tagSlice[0].(string)
-		if !ok || tagType != "e" {
-			continue // Skip if the first element is not string "e"
-		}
-		etagID := fmt.Sprintf("%v", tagSlice[1]) // Convert second element to string, regardless of its original type
-		eTags = append(eTags, etagID)
-	}
-	return eTags
-}
+func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, error) {
+	var messagesNestedInAThread []Message
 
-// Find the original message (depth 1)
-func findOriginalMessage(messages []Message) (Message, error) {
-	for _, msg := range messages {
-		eTags := filterETags(msg.Tags)
-		if len(eTags) == 0 {
-			msg.Depth = 1
-			return msg, nil
+	// Find the original message
+	var originalMessage *Message
+	for i, msg := range allUniqueThreadMessages {
+		etags := getETags(msg.Tags)
+		if len(etags) == 0 {
+			if originalMessage != nil {
+				return nil, errors.New("multiple original messages found")
+			}
+			originalMessage = &allUniqueThreadMessages[i]
+			originalMessage.Depth = 1
+			messagesNestedInAThread = append(messagesNestedInAThread, *originalMessage)
+			allUniqueThreadMessages = append(allUniqueThreadMessages[:i], allUniqueThreadMessages[i+1:]...)
+			break
 		}
 	}
-	return Message{}, errors.New("no original message found")
-}
 
-// Recursive function to assign replies to the right parent and return remaining messages
-func assignReplies(parent Message, allMessages []Message) (Message, []Message) {
-	var remainingMessages []Message
-	parent.Replies = []Message{} // Ensure replies are initialized
+	if originalMessage == nil {
+		return nil, errors.New("original message not found")
+	}
 
-	for _, msg := range allMessages {
-		eTags := filterETags(msg.Tags)
-		if len(eTags) == 1 && eTags[0] == parent.ID {
-			msg.Depth = parent.Depth + 1
-			var updatedMsg Message
-			updatedMsg, allMessages = assignReplies(msg, allMessages) // recursively assign deeper replies
-			parent.Replies = append(parent.Replies, updatedMsg)
+	// Process direct replies to the original message
+	for i := 0; i < len(allUniqueThreadMessages); i++ {
+		msg := allUniqueThreadMessages[i]
+		etags := getETags(msg.Tags)
+		if len(etags) == 1 && etags[0][1] == originalMessage.ID {
+			msg.Depth = 2
+			originalMessage.Replies = append(originalMessage.Replies, msg)
+			allUniqueThreadMessages = append(allUniqueThreadMessages[:i], allUniqueThreadMessages[i+1:]...)
+			i--
+		}
+	}
+
+	// Process remaining messages
+	for len(allUniqueThreadMessages) > 0 {
+		msg := allUniqueThreadMessages[0]
+		etags := getETags(msg.Tags)
+
+		var processed bool
+
+		if len(etags) == 1 {
+			// Case a: Message has only one etag
+			if parentMsg := findMessageByID(messagesNestedInAThread, etags[0][1]); parentMsg != nil {
+				msg.Depth = parentMsg.Depth + 1
+				parentMsg.Replies = append(parentMsg.Replies, msg)
+				processed = true
+			}
+		} else if len(etags) > 1 {
+			// Case b: Message has multiple etags and one of them has etag[3] == "reply"
+			for _, etag := range etags {
+				if len(etag) >= 4 && etag[3] == "reply" {
+					if parentMsg := findMessageByID(messagesNestedInAThread, etag[1]); parentMsg != nil {
+						msg.Depth = parentMsg.Depth + 1
+						parentMsg.Replies = append(parentMsg.Replies, msg)
+						processed = true
+						break
+					}
+				}
+			}
+
+			if !processed {
+				// Case c: Message has multiple etags and none of them have etag[3] == "reply"
+				var maxDepth int
+				var parentMsg *Message
+				for _, etag := range etags {
+					if msg := findMessageByID(messagesNestedInAThread, etag[1]); msg != nil && msg.Depth > maxDepth {
+						maxDepth = msg.Depth
+						parentMsg = msg
+					}
+				}
+				if parentMsg != nil {
+					msg.Depth = parentMsg.Depth + 1
+					parentMsg.Replies = append(parentMsg.Replies, msg)
+					processed = true
+				}
+			}
+		}
+
+		if processed {
+			allUniqueThreadMessages = allUniqueThreadMessages[1:]
 		} else {
-			remainingMessages = append(remainingMessages, msg)
+			// If none of the above cases match, skip the message
+			allUniqueThreadMessages = allUniqueThreadMessages[1:]
 		}
 	}
-	return parent, remainingMessages
+
+	return messagesNestedInAThread, nil
 }
 
-func processMessageThreading(allMessages []Message) ([]Message, error) {
-	originalMessage, err := findOriginalMessage(allMessages)
-	if err != nil {
-		return nil, err
+func getETags(tags []interface{}) [][]string {
+	var etags [][]string
+	for _, tag := range tags {
+		if tagArr, ok := tag.([]interface{}); ok && len(tagArr) > 0 && tagArr[0] == "e" {
+			var etag []string
+			for _, t := range tagArr {
+				if tStr, ok := t.(string); ok {
+					etag = append(etag, tStr)
+				}
+			}
+			etags = append(etags, etag)
+		}
 	}
-	allMessages = append(allMessages[:0], allMessages[1:]...) // remove the original message from slice
+	return etags
+}
 
-	nestedThread, remaining := assignReplies(originalMessage, allMessages)
-	if len(remaining) > 0 {
-		log.Printf("Remaining messages not processed: %+v\n", remaining)
+func findMessageByID(messages []Message, id string) *Message {
+	for i := range messages {
+		if messages[i].ID == id {
+			return &messages[i]
+		}
+		if msg := findMessageByID(messages[i].Replies, id); msg != nil {
+			return msg
+		}
 	}
-
-	return []Message{nestedThread}, nil
+	return nil
 }
