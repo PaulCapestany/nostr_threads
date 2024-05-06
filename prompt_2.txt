@@ -1,18 +1,514 @@
+For context, we must create fully working and completely implemented functions in Go that handle threading/nesting of a discussion consisting of multiple meessages, in a style similar to Reddit comments/replies, where there can be replies to the original message, replies to replies, replies to replies to replies, etc. Accurately keeping track of the depth of nesting is absolutely critical. Proper best practices for Golang must be used (including obvious things such as robust and proper error handling, etc). An example of input JSON and expected output JSON will be shown at the end of this prompt.
 
-if the e_tags array length == 0, then assign depth = 0 (we can refer to this as the rootID)
+We start, as our input, with a slice of Message, which we can refer to as `allUniqueThreadMessages []Message` with the below struct:
 
-TODO: flesh out what to do with results from following query (they might not be everything we need, might be missing messages that only refer to a reply, so would have to iterate over every non-rootID from these results with the same query [and do that recursively with any new results that come in]):
+type Message struct {
+	Content   interface{}   `json:"content"`
+	CreatedAt int64         `json:"created_at"`
+	ID        string        `json:"id"`
+	Kind      int           `json:"kind"`
+	Pubkey    string        `json:"pubkey"`
+	Sig       string        `json:"sig"`
+	Tags      []interface{} `json:"tags"`
+	Depth     int			`json:"depth"`
+	Replies   []Message     `json:"replies"`
+}
 
+allUniqueThreadMessages is already sorted by "created_at" in ascending order. We pass allUniqueThreadMessages to a function described in the next paragraph.
 
+We need to create a function (or multiple functions) which will take as input allUniqueThreadMessages and create as output messagesNestedInAThread. For every Message in allUniqueThreadMessages (proceeding in "created_at" order) we need to check every tag within the "tags" array that contains tag[0] == "e" (for shorthand we can refer to these as etags) and for those matching etags we first coerce the types of the contents to all be strings if they aren't already. Then, given that slice of etags, if the etags' length == 0, then assigns depth = 1 to the Message (for shorthand we can refer to this as the originalMessage, there should only be one such Message in allUniqueThreadMessages, if this is not the case an error must be reported). A Message.depth's value is considered to be the level of nesting within a thread (for example, the originalMessage is depth = 1, direct Replies for originalMessage should have Depth = 2, Replies to Replies which had Depth = 2 should be assigned a Depth = 3, and so on, expanded to any arbitrary number of levels/depths of nesting). We must find the originalMessage, add it to messagesNestedInAThread and remove it from allUniqueThreadMessages before proceeding with anything else. Once we have found the originalMessage, we can process every other Message's etags as follows:
+	1. first we check to see which messages have only 1 etag, wherein etag[1] == originalMessage.id. These messages should be considered to be direct replies to the originalMessage, and as such, should be placed within originalMessage.Replies (within messagesNestedInAThread), and again, each of these messages should be assigned depth = 2. Per usual, if a Message has been properly assigned to messagesNestedInAThread it must be removed from allUniqueThreadMessages.
+	2. from here on out, we need to check the remaining Messages in allUniqueThreadMessages to create the proper nesting, assigning the correct depth value for each Message (again: always removing the Message from allUniqueThreadMessages once it has been added to messagesNestedInAThread):
+		a. if a Message has only one etag, the message should be considered a reply to whatever its etag[1] matches with the messagesNestedInAThread's "id" it is referencing (and placed within that Message.Replies, and of course be given a correct Depth value)
+		b. if a Message has multiple etags, if one of the etags has etag[3] == "reply", then the message should be considered a reply to the etag[1] which matches whichever messagesNestedInAThread's "id" it is referencing (and placed within that Message.Replies, and of course be given a correct Depth value)
+		c. lastly, if there are multiple etags and the Message had not yet fulfilled any of the previous criteria, it should be considered to be a reply to whichever of its etag[1] values matches a Message with that "id" which has the largest "depth" value (and again, should then be placed within that Message.Replies, and of course be given a correct Depth value)
 
+Example input JSON:
 
-if the e_tags array length == 1 and e_tags[1] != rootID.....?!?!?!?, then the message must be considered to be a reply to the message that has an "id" == e_tags[1] and has depth
+[
+  {
+    "content": "Very good Citadel Dispatches with nostr:npub1xtscya34g58tk0z605fvr788k263gsu6cy9x0mhnm87echrgufzsevkk5s and with nostr:npub1lunaq893u4hmtpvqxpk8hfmtkqmm7ggutdtnc4hyuux2skr4ttcqr827lj/nostr:npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr . Everybody should listen.",
+    "created_at": 1713962195,
+    "id": "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+    "kind": 1,
+    "pubkey": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    "sig": "2e20455e9ba269b0c0675920db7fc8c471c0a253bc9b1f20a38b27456d570bf54c5534ee62dba0e5b05d77f2ed502ac2dea87192dc9060cb324254441d163c25",
+    "tags": [
+      [
+        "client",
+        "gossip"
+      ],
+      [
+        "p",
+        "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+      ],
+      [
+        "p",
+        "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+      ],
+      [
+        "p",
+        "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+      ]
+    ],
+    "depth": 0,
+    "replies": null
+  },
+  {
+    "content": "Agreed. I didn’t watch all of it. But plan to finish what I missed.",
+    "created_at": 1713962240,
+    "id": "872bc54d61f3d419859e0b0bcf21ff98fd830542d1aa018b317819340430d16f",
+    "kind": 1,
+    "pubkey": "9cb3545c36940d9a2ef86d50d5c7a8fab90310cc898c4344bcfc4c822ff47bca",
+    "sig": "63e15811f72148a20764911d3e930580b9a69d024facbf5d67b3a358bbd2670ab2a8c561b5d887467fa056bf999f525b8e76064a99efd357002293f0d786ac90",
+    "tags": [
+      [
+        "e",
+        "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159"
+      ],
+      [
+        "p",
+        "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+      ],
+      [
+        "p",
+        "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+      ],
+      [
+        "p",
+        "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+      ],
+      [
+        "p",
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+      ]
+    ],
+    "depth": 0,
+    "replies": null
+  },
+  {
+    "content": "Unfortunately for some mysterious reason we cannot have a dedicated kind for publishing podcast feeds on Nostr (https://github.com/nostr-protocol/nips/pull/1093).\n\nOtherwise, in the magical fantasy land in which such an outrageous absurd thing would be possible, we would be able to reference podcast episodes directly from notes in a Nostr-native way.",
+    "created_at": 1713962274,
+    "id": "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+    "kind": 1,
+    "pubkey": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    "sig": "9aabef0a9eed117e81ea99822f3787a14b91d07f1d26ae64450f63213fc20a3c11a14ac15c6945a70f0d29a184c0405ea5d1d6c075e0fd27a44212906cb85c50",
+    "tags": [
+      [
+        "client",
+        "gossip"
+      ],
+      [
+        "p",
+        "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+      ],
+      [
+        "p",
+        "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+      ],
+      [
+        "p",
+        "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+      ],
+      [
+        "e",
+        "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+        "wss://nostr.mom/",
+        "root"
+      ]
+    ],
+    "depth": 0,
+    "replies": null
+  },
+  {
+    "content": "Every other url renders some type of preview, besides podcasting2.0 apps",
+    "created_at": 1713962484,
+    "id": "7e570befa5f58cd8978fb8d58a07190b8049df87c0e3527889a20525b04937e4",
+    "kind": 1,
+    "pubkey": "d70d50091504b992d1838822af245d5f6b3a16b82d917acb7924cef61ed4acee",
+    "sig": "0f71715f71e9d304594f7210c1fded86b8031943fa149c59a6498a113cf19757b97b738eadbb6c5960b8dd51ef711d18bf0b0c2d88e1bead1d73571869e3ab49",
+    "tags": [
+      [
+        "e",
+        "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+        "",
+        "root"
+      ],
+      [
+        "e",
+        "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+        "",
+        "reply"
+      ],
+      [
+        "p",
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+      ]
+    ],
+    "depth": 0,
+    "replies": null
+  },
+  {
+    "content": "Just use the audio nip to bridge to rss",
+    "created_at": 1713974365,
+    "id": "adab2cd34c0b7ab9e2a08370a5afa581dd7365d97f143f9789cdb72a2e6cf3cd",
+    "kind": 1,
+    "pubkey": "97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322",
+    "sig": "0c0d2b178460c56ffa3c35d743767a7b47c853531f39462abc23c79c705d79a4e30ba4814a9891d7b04f343d4ba07383735387e8512ec0f46c986bb066e504d1",
+    "tags": [
+      [
+        "p",
+        "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245",
+        "wss://nostr.oxtr.dev/",
+        "jb55"
+      ],
+      [
+        "p",
+        "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0",
+        "wss://relay.damus.io/",
+        "Stuart Bowman"
+      ],
+      [
+        "p",
+        "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5",
+        "wss://nostr.thesamecat.io/",
+        "hzrd149"
+      ],
+      [
+        "p",
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+        "wss://pyramid.fiatjaf.com/",
+        "fiatjaf"
+      ],
+      [
+        "e",
+        "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+        "wss://140.f7z.io/",
+        "root"
+      ],
+      [
+        "e",
+        "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+        "wss://pyramid.fiatjaf.com/",
+        "reply"
+      ],
+      [
+        "client",
+        "Coracle",
+        "31990:97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322:1685968093690"
+      ]
+    ],
+    "depth": 0,
+    "replies": null
+  },
+  {
+    "content": "yeah but this would be a logical use of NIPs. And we all know NIPS are for endless weird fringe use cases.",
+    "created_at": 1713976442,
+    "id": "eadc6792e7aa2bdd80c2b29762e670474b0997727150175e1f527b949d478e8e",
+    "kind": 1,
+    "pubkey": "61066504617ee79387021e18c89fb79d1ddbc3e7bff19cf2298f40466f8715e9",
+    "sig": "3cade71be75caaebad7a9fd9a88cafeceb699a5c4c289bc3020b52f746dafa120362a6dee861ec8b7133c690af24ff515a4272eddfb7620febacd87a1aa07a58",
+    "tags": [
+      [
+        "e",
+        "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159"
+      ],
+      [
+        "e",
+        "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121"
+      ],
+      [
+        "p",
+        "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+      ],
+      [
+        "p",
+        "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+      ],
+      [
+        "p",
+        "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+      ],
+      [
+        "p",
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+      ]
+    ],
+    "depth": 0,
+    "replies": null
+  },
+  {
+    "content": "https://github.com/nostr-protocol/nips/pull/1185\nhttps://github.com/nostr-protocol/nips/pull/1043\n\nWith both of these we can reference any podcast on nostr natively. Moving all podcasters to a native nostr podcast host will take a long time and may never happen - which is why the first one is critical.",
+    "created_at": 1713978257,
+    "id": "d5a974399a4fb715f0d767ee407f084460ba2d99ddbcc1897f202c4e8b856ac8",
+    "kind": 1,
+    "pubkey": "e4f695f05bb05b231255ccce3d471b8d79c64a65bccc014662d27f0f7e921092",
+    "sig": "c9976b90bffb52e166cd8dfdc0023522215e054e4c6fe933f1245ba8ad464b4f8c614d85bef0a9df9b6fb172bbfdcee080f53cb28315982ed38b1f9931412bea",
+    "tags": [
+      [
+        "e",
+        "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+        "",
+        "reply"
+      ],
+      [
+        "p",
+        "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+      ],
+      [
+        "e",
+        "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+        "wss://nostr.mom/",
+        "root"
+      ]
+    ],
+    "depth": 0,
+    "replies": null
+  }
+]
 
-if the e_tags array length == 2, then the message must be considered to be a reply to one of the messages, check if e_tags[3] == "reply"
+Example expected output JSON:
 
-TODO: flesh out how 
-
-and the other should be the rootIDthat has an "id" == e_tags[1]
-
-
-
+[
+  {
+    "content": "Very good Citadel Dispatches with nostr:npub1xtscya34g58tk0z605fvr788k263gsu6cy9x0mhnm87echrgufzsevkk5s and with nostr:npub1lunaq893u4hmtpvqxpk8hfmtkqmm7ggutdtnc4hyuux2skr4ttcqr827lj/nostr:npub1ye5ptcxfyyxl5vjvdjar2ua3f0hynkjzpx552mu5snj3qmx5pzjscpknpr . Everybody should listen.",
+    "created_at": 1713962195,
+    "id": "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+    "kind": 1,
+    "pubkey": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+    "sig": "2e20455e9ba269b0c0675920db7fc8c471c0a253bc9b1f20a38b27456d570bf54c5534ee62dba0e5b05d77f2ed502ac2dea87192dc9060cb324254441d163c25",
+    "tags": [
+      [
+        "client",
+        "gossip"
+      ],
+      [
+        "p",
+        "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+      ],
+      [
+        "p",
+        "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+      ],
+      [
+        "p",
+        "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+      ]
+    ],
+    "depth": 1,
+    "replies": [
+      {
+        "content": "Agreed. I didn’t watch all of it. But plan to finish what I missed.",
+        "created_at": 1713962240,
+        "id": "872bc54d61f3d419859e0b0bcf21ff98fd830542d1aa018b317819340430d16f",
+        "kind": 1,
+        "pubkey": "9cb3545c36940d9a2ef86d50d5c7a8fab90310cc898c4344bcfc4c822ff47bca",
+        "sig": "63e15811f72148a20764911d3e930580b9a69d024facbf5d67b3a358bbd2670ab2a8c561b5d887467fa056bf999f525b8e76064a99efd357002293f0d786ac90",
+        "tags": [
+          [
+            "e",
+            "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159"
+          ],
+          [
+            "p",
+            "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+          ],
+          [
+            "p",
+            "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+          ],
+          [
+            "p",
+            "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+          ],
+          [
+            "p",
+            "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+          ]
+        ],
+        "depth": 2,
+        "replies": []
+      },
+      {
+        "content": "Unfortunately for some mysterious reason we cannot have a dedicated kind for publishing podcast feeds on Nostr (https://github.com/nostr-protocol/nips/pull/1093).\n\nOtherwise, in the magical fantasy land in which such an outrageous absurd thing would be possible, we would be able to reference podcast episodes directly from notes in a Nostr-native way.",
+        "created_at": 1713962274,
+        "id": "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+        "kind": 1,
+        "pubkey": "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+        "sig": "9aabef0a9eed117e81ea99822f3787a14b91d07f1d26ae64450f63213fc20a3c11a14ac15c6945a70f0d29a184c0405ea5d1d6c075e0fd27a44212906cb85c50",
+        "tags": [
+          [
+            "client",
+            "gossip"
+          ],
+          [
+            "p",
+            "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+          ],
+          [
+            "p",
+            "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+          ],
+          [
+            "p",
+            "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+          ],
+          [
+            "e",
+            "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+            "wss://nostr.mom/",
+            "root"
+          ]
+        ],
+        "depth": 2,
+        "replies": [
+          {
+            "content": "Every other url renders some type of preview, besides podcasting2.0 apps",
+            "created_at": 1713962484,
+            "id": "7e570befa5f58cd8978fb8d58a07190b8049df87c0e3527889a20525b04937e4",
+            "kind": 1,
+            "pubkey": "d70d50091504b992d1838822af245d5f6b3a16b82d917acb7924cef61ed4acee",
+            "sig": "0f71715f71e9d304594f7210c1fded86b8031943fa149c59a6498a113cf19757b97b738eadbb6c5960b8dd51ef711d18bf0b0c2d88e1bead1d73571869e3ab49",
+            "tags": [
+              [
+                "e",
+                "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+                "",
+                "root"
+              ],
+              [
+                "e",
+                "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+                "",
+                "reply"
+              ],
+              [
+                "p",
+                "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+              ]
+            ],
+            "depth": 3,
+            "replies": []
+          },
+          {
+            "content": "Just use the audio nip to bridge to rss",
+            "created_at": 1713974365,
+            "id": "adab2cd34c0b7ab9e2a08370a5afa581dd7365d97f143f9789cdb72a2e6cf3cd",
+            "kind": 1,
+            "pubkey": "97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322",
+            "sig": "0c0d2b178460c56ffa3c35d743767a7b47c853531f39462abc23c79c705d79a4e30ba4814a9891d7b04f343d4ba07383735387e8512ec0f46c986bb066e504d1",
+            "tags": [
+              [
+                "p",
+                "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245",
+                "wss://nostr.oxtr.dev/",
+                "jb55"
+              ],
+              [
+                "p",
+                "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0",
+                "wss://relay.damus.io/",
+                "Stuart Bowman"
+              ],
+              [
+                "p",
+                "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5",
+                "wss://nostr.thesamecat.io/",
+                "hzrd149"
+              ],
+              [
+                "p",
+                "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d",
+                "wss://pyramid.fiatjaf.com/",
+                "fiatjaf"
+              ],
+              [
+                "e",
+                "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+                "wss://140.f7z.io/",
+                "root"
+              ],
+              [
+                "e",
+                "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+                "wss://pyramid.fiatjaf.com/",
+                "reply"
+              ],
+              [
+                "client",
+                "Coracle",
+                "31990:97c70a44366a6535c145b333f973ea86dfdc2d7a99da618c40c64705ad98e322:1685968093690"
+              ]
+            ],
+            "depth": 3,
+            "replies": []
+          },
+          {
+            "content": "yeah but this would be a logical use of NIPs. And we all know NIPS are for endless weird fringe use cases.",
+            "created_at": 1713976442,
+            "id": "eadc6792e7aa2bdd80c2b29762e670474b0997727150175e1f527b949d478e8e",
+            "kind": 1,
+            "pubkey": "61066504617ee79387021e18c89fb79d1ddbc3e7bff19cf2298f40466f8715e9",
+            "sig": "3cade71be75caaebad7a9fd9a88cafeceb699a5c4c289bc3020b52f746dafa120362a6dee861ec8b7133c690af24ff515a4272eddfb7620febacd87a1aa07a58",
+            "tags": [
+              [
+                "e",
+                "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159"
+              ],
+              [
+                "e",
+                "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121"
+              ],
+              [
+                "p",
+                "32e1827635450ebb3c5a7d12c1f8e7b2b514439ac10a67eef3d9fd9c5c68e245"
+              ],
+              [
+                "p",
+                "ff27d01cb1e56fb58580306c7ba76bb037bf211c5b573c56e4e70ca858755af0"
+              ],
+              [
+                "p",
+                "266815e0c9210dfa324c6cba3573b14bee49da4209a9456f9484e5106cd408a5"
+              ],
+              [
+                "p",
+                "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+              ]
+            ],
+            "depth": 3,
+            "replies": []
+          },
+          {
+            "content": "https://github.com/nostr-protocol/nips/pull/1185\nhttps://github.com/nostr-protocol/nips/pull/1043\n\nWith both of these we can reference any podcast on nostr natively. Moving all podcasters to a native nostr podcast host will take a long time and may never happen - which is why the first one is critical.",
+            "created_at": 1713978257,
+            "id": "d5a974399a4fb715f0d767ee407f084460ba2d99ddbcc1897f202c4e8b856ac8",
+            "kind": 1,
+            "pubkey": "e4f695f05bb05b231255ccce3d471b8d79c64a65bccc014662d27f0f7e921092",
+            "sig": "c9976b90bffb52e166cd8dfdc0023522215e054e4c6fe933f1245ba8ad464b4f8c614d85bef0a9df9b6fb172bbfdcee080f53cb28315982ed38b1f9931412bea",
+            "tags": [
+              [
+                "e",
+                "0868f6803232d74392a9f5274c01487309eca3336fc1091d70f8355b72505121",
+                "",
+                "reply"
+              ],
+              [
+                "p",
+                "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d"
+              ],
+              [
+                "e",
+                "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159",
+                "wss://nostr.mom/",
+                "root"
+              ]
+            ],
+            "depth": 3,
+            "replies": []
+          }
+        ]
+      }
+    ]
+  }
+]

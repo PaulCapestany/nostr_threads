@@ -2,9 +2,11 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"os"
+	"reflect"
 	"sort"
 
 	"github.com/couchbase/gocb/v2"
@@ -18,6 +20,8 @@ type Message struct {
 	Pubkey    string        `json:"pubkey"`
 	Sig       string        `json:"sig"`
 	Tags      []interface{} `json:"tags"`
+	Depth     int           `json:"depth"`
+	Replies   []Message     `json:"replies"`
 }
 
 var cluster *gocb.Cluster
@@ -49,7 +53,9 @@ func main() {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
-	output, err := json.Marshal(allUniqueThreadMessages)
+	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
+
+	output, err := json.Marshal(threadedProcessedMessages)
 	if err != nil {
 		log.Fatalf("Failed to marshal messages: %v", err)
 	}
@@ -142,4 +148,77 @@ func contains(ids []string, id string) bool {
 		}
 	}
 	return false
+}
+
+// -------------------------------------------------------//
+// The following deals with nesting/threading of messages //
+// -------------------------------------------------------//
+
+// Helper function to convert any tag to a string, and filter e-tags
+func filterETags(tags []interface{}) []string {
+	var eTags []string
+	for _, tag := range tags {
+		tagSlice, ok := tag.([]string) // Convert tag to a slice of strings
+		if !ok {
+			continue
+		}
+		if len(tagSlice) > 0 && reflect.TypeOf(tagSlice[0]).Kind() == reflect.String && tagSlice[0] == "e" {
+			etagID := ""
+			if len(tagSlice) > 1 {
+				etagID = fmt.Sprintf("%v", tagSlice[1]) // Convert to string if not already
+			}
+			eTags = append(eTags, etagID)
+		}
+	}
+	return eTags
+}
+
+// Find the original message (depth 1)
+func findOriginalMessage(messages []Message) (Message, error) {
+	for _, msg := range messages {
+		eTags := filterETags(msg.Tags)
+		if len(eTags) == 0 {
+			msg.Depth = 1
+			return msg, nil
+		}
+	}
+	return Message{}, errors.New("no original message found")
+}
+
+// Recursive function to assign replies to the right parent and return remaining messages
+func assignReplies(parent Message, allMessages []Message) (Message, []Message) {
+	var remainingMessages []Message
+
+	for _, msg := range allMessages {
+		eTags := filterETags(msg.Tags)
+		if len(eTags) == 1 && eTags[0] == parent.ID {
+			msg.Depth = parent.Depth + 1
+			updatedMsg, _ := assignReplies(msg, remainingMessages) // recursively assign deeper replies
+			parent.Replies = append(parent.Replies, updatedMsg)
+		} else {
+			remainingMessages = append(remainingMessages, msg)
+		}
+	}
+	return parent, remainingMessages
+}
+
+// Main processing function
+func processMessageThreading(allMessages []Message) ([]Message, error) {
+	originalMessage, err := findOriginalMessage(allMessages)
+	if err != nil {
+		return nil, err
+	}
+	allMessages = append(allMessages[:0], allMessages[1:]...) // remove the original message from slice
+
+	nestedThread, remaining := assignReplies(originalMessage, allMessages)
+	// Log remaining messages if they exist
+	if len(remaining) > 0 {
+		log.Printf("Remaining messages not processed: %+v\n", remaining)
+		// Optionally, you might want to handle them further here.
+	}
+
+	// Handle or process remaining messages if necessary
+	// For example, you might want to log unprocessed messages or handle them differently
+
+	return []Message{nestedThread}, nil
 }
