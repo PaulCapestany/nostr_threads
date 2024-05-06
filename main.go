@@ -19,6 +19,7 @@ type Message struct {
 	Pubkey    string        `json:"pubkey"`
 	Sig       string        `json:"sig"`
 	Tags      []interface{} `json:"tags"`
+	ParentID  string        `json:"parent_id"`
 	Depth     int           `json:"depth"`
 	Replies   []Message     `json:"replies"`
 }
@@ -52,16 +53,31 @@ func main() {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
+	// Marshal into JSON
+	ujsonBytes, err := json.Marshal(allUniqueThreadMessages)
+	if err != nil {
+		log.Fatalf("Error marshalling JSON: %v", err)
+	}
+	fmt.Println(string(ujsonBytes))
+	fmt.Println()
+	fmt.Println()
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
 		log.Fatalf("Error with processMessageThreading: %v", err)
 	}
 
-	output, err := json.Marshal(threadedProcessedMessages)
-	if err != nil {
-		log.Fatalf("Failed to marshal messages: %v", err)
+	// Convert messages to MessageView and serialize to JSON
+	views := make([]MessageView, len(threadedProcessedMessages))
+	for i, msg := range threadedProcessedMessages {
+		views[i] = createMessageView(msg)
 	}
-	fmt.Println(string(output))
+
+	// Marshal into JSON
+	jsonBytes, err := json.MarshalIndent(views, "", "  ")
+	if err != nil {
+		log.Fatalf("Error marshalling JSON: %v", err)
+	}
+	fmt.Println(string(jsonBytes))
 }
 
 func messageFetcher(messageIDs []string) {
@@ -161,17 +177,28 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 
 	// Find the original message
 	var originalMessage *Message
+	var maxMentions int
 	for i, msg := range allUniqueThreadMessages {
 		etags := getETags(msg.Tags)
 		if len(etags) == 0 {
-			if originalMessage != nil {
-				return nil, errors.New("multiple original messages found")
+			// Count the number of times the message's ID is mentioned in other messages' etags
+			mentions := 0
+			for _, otherMsg := range allUniqueThreadMessages {
+				if otherMsg.ID != msg.ID {
+					for _, etag := range getETags(otherMsg.Tags) {
+						if len(etag) > 1 && etag[1] == msg.ID {
+							mentions++
+						}
+					}
+				}
 			}
-			originalMessage = &allUniqueThreadMessages[i]
-			originalMessage.Depth = 1
-			messagesNestedInAThread = append(messagesNestedInAThread, *originalMessage)
-			allUniqueThreadMessages = append(allUniqueThreadMessages[:i], allUniqueThreadMessages[i+1:]...)
-			break
+
+			if originalMessage == nil || mentions > maxMentions {
+				originalMessage = &allUniqueThreadMessages[i]
+				maxMentions = mentions
+			} else if mentions == maxMentions {
+				return nil, errors.New("multiple original messages found with the same number of mentions")
+			}
 		}
 	}
 
@@ -179,12 +206,17 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 		return nil, errors.New("original message not found")
 	}
 
+	originalMessage.Depth = 1
+	messagesNestedInAThread = append(messagesNestedInAThread, *originalMessage)
+	allUniqueThreadMessages = removeMessage(allUniqueThreadMessages, originalMessage.ID)
+
 	// Process direct replies to the original message
 	for i := 0; i < len(allUniqueThreadMessages); i++ {
 		msg := allUniqueThreadMessages[i]
 		etags := getETags(msg.Tags)
 		if len(etags) == 1 && etags[0][1] == originalMessage.ID {
 			msg.Depth = 2
+			msg.ParentID = originalMessage.ID
 			originalMessage.Replies = append(originalMessage.Replies, msg)
 			allUniqueThreadMessages = append(allUniqueThreadMessages[:i], allUniqueThreadMessages[i+1:]...)
 			i--
@@ -202,6 +234,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 			// Case a: Message has only one etag
 			if parentMsg := findMessageByID(messagesNestedInAThread, etags[0][1]); parentMsg != nil {
 				msg.Depth = parentMsg.Depth + 1
+				msg.ParentID = parentMsg.ID
 				parentMsg.Replies = append(parentMsg.Replies, msg)
 				processed = true
 			}
@@ -211,6 +244,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 				if len(etag) >= 4 && etag[3] == "reply" {
 					if parentMsg := findMessageByID(messagesNestedInAThread, etag[1]); parentMsg != nil {
 						msg.Depth = parentMsg.Depth + 1
+						msg.ParentID = parentMsg.ID
 						parentMsg.Replies = append(parentMsg.Replies, msg)
 						processed = true
 						break
@@ -230,6 +264,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 				}
 				if parentMsg != nil {
 					msg.Depth = parentMsg.Depth + 1
+					msg.ParentID = parentMsg.ID
 					parentMsg.Replies = append(parentMsg.Replies, msg)
 					processed = true
 				}
@@ -245,6 +280,15 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 	}
 
 	return messagesNestedInAThread, nil
+}
+
+func removeMessage(messages []Message, id string) []Message {
+	for i, msg := range messages {
+		if msg.ID == id {
+			return append(messages[:i], messages[i+1:]...)
+		}
+	}
+	return messages
 }
 
 func getETags(tags []interface{}) [][]string {
@@ -273,4 +317,29 @@ func findMessageByID(messages []Message, id string) *Message {
 		}
 	}
 	return nil
+}
+
+////////////////////////////////////////////////////////////////////////////////////
+
+type MessageView struct {
+	ID       string `json:"id"`
+	ParentID string `json:"parent_id"`
+	// CreatedAt int64         `json:"created_at"`
+	User    string        `json:"user"`
+	Content interface{}   `json:"message"`
+	Replies []MessageView `json:"replies,omitempty"` // Use omitempty to avoid empty arrays in output
+}
+
+func createMessageView(msg Message) MessageView {
+	mv := MessageView{
+		ID:       msg.ID,
+		ParentID: msg.ParentID,
+		// CreatedAt: msg.CreatedAt,
+		User:    "@" + msg.Pubkey[:5],
+		Content: msg.Content,
+	}
+	for _, reply := range msg.Replies {
+		mv.Replies = append(mv.Replies, createMessageView(reply))
+	}
+	return mv
 }
