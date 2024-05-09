@@ -53,14 +53,6 @@ func main() {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
-	// // Marshal into JSON
-	// ujsonBytes, err := json.Marshal(allUniqueThreadMessages)
-	// if err != nil {
-	// 	log.Fatalf("Error marshalling JSON: %v", err)
-	// }
-	// fmt.Println(string(ujsonBytes))
-	// fmt.Println()
-	// fmt.Println()
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
 		log.Fatalf("Error with processMessageThreading: %v", err)
@@ -320,14 +312,16 @@ func findMessageByID(messages []Message, id string) *Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
+// experimenting with formatting output for viewing purposes differently
 
 type MessageView struct {
 	// ID       string `json:"id"`
 	// ParentID string `json:"parent_id"`
 	// CreatedAt int64         `json:"created_at"`
-	User    string        `json:"user"`
-	Content interface{}   `json:"message"`
-	Replies []MessageView `json:"replies,omitempty"` // Use omitempty to avoid empty arrays in output
+	User           string        `json:"user"`
+	MessageContent interface{}   `json:"message_content"`
+	Depth          int           `json:"depth"`
+	Replies        []MessageView `json:"replies,omitempty"` // Use omitempty to avoid empty arrays in output
 }
 
 func createMessageView(msg Message) MessageView {
@@ -335,8 +329,9 @@ func createMessageView(msg Message) MessageView {
 		// ID:       msg.ID,
 		// ParentID: msg.ParentID,
 		// CreatedAt: msg.CreatedAt,
-		User:    "@" + msg.Pubkey[:5],
-		Content: msg.Content,
+		User:           "@" + msg.Pubkey[:5],
+		MessageContent: msg.Content,
+		Depth:          msg.Depth,
 	}
 	for _, reply := range msg.Replies {
 		mv.Replies = append(mv.Replies, createMessageView(reply))
