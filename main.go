@@ -59,10 +59,15 @@ func main() {
 	}
 
 	// Convert messages to MessageView and serialize to JSON
-	views := make([]MessageView, len(threadedProcessedMessages))
-	for i, msg := range threadedProcessedMessages {
-		views[i] = createMessageView(msg)
+	views := make([]MessageView, 0)
+	var flattenMessages func(messages []Message)
+	flattenMessages = func(messages []Message) {
+		for _, msg := range messages {
+			views = append(views, createMessageView(msg))
+			flattenMessages(msg.Replies)
+		}
 	}
+	flattenMessages(threadedProcessedMessages)
 
 	// Marshal into JSON
 	jsonBytes, err := json.MarshalIndent(views, "", "  ")
@@ -315,26 +320,21 @@ func findMessageByID(messages []Message, id string) *Message {
 // experimenting with formatting output for viewing purposes differently
 
 type MessageView struct {
-	// ID       string `json:"id"`
-	// ParentID string `json:"parent_id"`
-	// CreatedAt int64         `json:"created_at"`
-	User           string        `json:"user"`
-	MessageContent interface{}   `json:"message_content"`
-	Depth          int           `json:"depth"`
-	Replies        []MessageView `json:"replies,omitempty"` // Use omitempty to avoid empty arrays in output
+	ID             string      `json:"id"`
+	ParentID       string      `json:"parent_id"`
+	CreatedAt      int64       `json:"created_at"`
+	User           string      `json:"user"`
+	MessageContent interface{} `json:"message_content"`
+	Depth          int         `json:"depth"`
 }
 
 func createMessageView(msg Message) MessageView {
-	mv := MessageView{
-		// ID:       msg.ID,
-		// ParentID: msg.ParentID,
-		// CreatedAt: msg.CreatedAt,
+	return MessageView{
+		ID:             msg.ID,
+		ParentID:       msg.ParentID,
+		CreatedAt:      msg.CreatedAt,
 		User:           "@" + msg.Pubkey[:5],
 		MessageContent: msg.Content,
 		Depth:          msg.Depth,
 	}
-	for _, reply := range msg.Replies {
-		mv.Replies = append(mv.Replies, createMessageView(reply))
-	}
-	return mv
 }
