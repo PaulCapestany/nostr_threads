@@ -53,14 +53,14 @@ func main() {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
-	// Marshal into JSON
-	ujsonBytes, err := json.Marshal(allUniqueThreadMessages)
-	if err != nil {
-		log.Fatalf("Error marshalling JSON: %v", err)
-	}
-	fmt.Println(string(ujsonBytes))
-	fmt.Println()
-	fmt.Println()
+	// // Marshal into JSON
+	// ujsonBytes, err := json.Marshal(allUniqueThreadMessages)
+	// if err != nil {
+	// 	log.Fatalf("Error marshalling JSON: %v", err)
+	// }
+	// fmt.Println(string(ujsonBytes))
+	// fmt.Println()
+	// fmt.Println()
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
 		log.Fatalf("Error with processMessageThreading: %v", err)
@@ -322,8 +322,8 @@ func findMessageByID(messages []Message, id string) *Message {
 ////////////////////////////////////////////////////////////////////////////////////
 
 type MessageView struct {
-	ID       string `json:"id"`
-	ParentID string `json:"parent_id"`
+	// ID       string `json:"id"`
+	// ParentID string `json:"parent_id"`
 	// CreatedAt int64         `json:"created_at"`
 	User    string        `json:"user"`
 	Content interface{}   `json:"message"`
@@ -332,8 +332,8 @@ type MessageView struct {
 
 func createMessageView(msg Message) MessageView {
 	mv := MessageView{
-		ID:       msg.ID,
-		ParentID: msg.ParentID,
+		// ID:       msg.ID,
+		// ParentID: msg.ParentID,
 		// CreatedAt: msg.CreatedAt,
 		User:    "@" + msg.Pubkey[:5],
 		Content: msg.Content,

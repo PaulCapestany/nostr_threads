@@ -1,0 +1,1 @@
+JSON data from a Reddit-style discussion will be provided, you must first suggest 3-5 topic hashtags for how to categorize the conversation, and you must provide a summary of the conversation, including whatever seems to be the consensus (if any) as well as any notable disagreements (if any):
