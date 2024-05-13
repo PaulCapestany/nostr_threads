@@ -69,8 +69,20 @@ func main() {
 	}
 	flattenMessages(threadedProcessedMessages)
 
+	// Concatenate message contents
+	var allMessagesContent string
+	for _, msg := range views {
+		allMessagesContent += fmt.Sprintf("%s\n\n", msg.MessageContent)
+	}
+
+	// Create the final JSON structure
+	output := map[string]interface{}{
+		"all_messages_content": allMessagesContent,
+		"messages":             views,
+	}
+
 	// Marshal into JSON
-	jsonBytes, err := json.MarshalIndent(views, "", "  ")
+	jsonBytes, err := json.MarshalIndent(output, "", "  ")
 	if err != nil {
 		log.Fatalf("Error marshalling JSON: %v", err)
 	}
@@ -317,15 +329,20 @@ func findMessageByID(messages []Message, id string) *Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
-// experimenting with formatting output for viewing purposes differently
+// experimenting with formatting output for viewing purposes differently...
+
+type MessagesView struct {
+	AllMessagesContent string    `json:"all_messages_content"`
+	Messages           []Message `json:"messages"`
+}
 
 type MessageView struct {
-	ID             string      `json:"id"`
-	ParentID       string      `json:"parent_id"`
-	CreatedAt      int64       `json:"created_at"`
-	User           string      `json:"user"`
-	MessageContent interface{} `json:"message_content"`
-	Depth          int         `json:"depth"`
+	ID             string `json:"id"`
+	ParentID       string `json:"parent_id"`
+	CreatedAt      int64  `json:"created_at"`
+	User           string `json:"user"`
+	MessageContent string `json:"message_content"`
+	Depth          int    `json:"depth"`
 }
 
 func createMessageView(msg Message) MessageView {
@@ -333,8 +350,8 @@ func createMessageView(msg Message) MessageView {
 		ID:             msg.ID,
 		ParentID:       msg.ParentID,
 		CreatedAt:      msg.CreatedAt,
-		User:           "@" + msg.Pubkey[:5],
-		MessageContent: msg.Content,
+		User:           msg.Pubkey,
+		MessageContent: fmt.Sprintf("%v", msg.Content),
 		Depth:          msg.Depth,
 	}
 }
