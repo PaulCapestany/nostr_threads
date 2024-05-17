@@ -1,28 +1,41 @@
-// daemon_test.go
 package main
 
 import (
+	"os"
 	"os/exec"
-	"syscall"
 	"testing"
 	"time"
 )
 
 func TestServiceStartup(t *testing.T) {
-    cmd := exec.Command("go", "run", "main.go")
-    if err := cmd.Start(); err != nil {
-        t.Fatalf("Failed to start the service: %v", err)
-    }
+	cmd := exec.Command("nostr_threads")
 
-    // Give it some time to start
-    time.Sleep(2 * time.Second)
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("Service failed to start: %v", err)
+	}
+	t.Log("Service started successfully.")
 
-    if err := cmd.Process.Signal(syscall.SIGTERM); err != nil {
-        t.Fatalf("Failed to send SIGTERM to the service: %v", err)
-    }
+	// Wait for a short duration to ensure the service has started
+	time.Sleep(2 * time.Second)
 
-    // Wait for the process to exit
-    if err := cmd.Wait(); err != nil {
-        t.Fatalf("Service did not shut down gracefully: %v", err)
-    }
+	if err := cmd.Process.Signal(os.Interrupt); err != nil {
+		t.Fatalf("Failed to send interrupt signal to the service: %v", err)
+	}
+	t.Log("Sent interrupt signal to the service.")
+
+	done := make(chan error, 1)
+	go func() {
+		done <- cmd.Wait()
+	}()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Errorf("Service did not shut down gracefully: %v", err)
+		} else {
+			t.Log("Service shut down gracefully.")
+		}
+	case <-time.After(2 * time.Second):
+		t.Errorf("Service shutdown timed out")
+	}
 }

@@ -62,7 +62,7 @@ func main() {
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("Shutting down service...")
+				log.Println("Received shutdown signal. Shutting down service...")
 				return
 			default:
 				// Placeholder for actual processing logic
@@ -80,6 +80,7 @@ func main() {
 
 // Placeholder function to process messages
 func processMessages() {
+	log.Println("Starting message processing...")
 
 	// Start fetching messages recursively
 	messageFetcher(messageIDsToQuery)
