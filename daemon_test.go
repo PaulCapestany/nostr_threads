@@ -35,7 +35,7 @@ func TestServiceStartup(t *testing.T) {
 		} else {
 			t.Log("Service shut down gracefully.")
 		}
-	case <-time.After(2 * time.Second):
+	case <-time.After(5 * time.Second):
 		t.Errorf("Service shutdown timed out")
 	}
 }

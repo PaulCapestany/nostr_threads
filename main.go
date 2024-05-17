@@ -59,13 +59,13 @@ func main() {
 
 	// Start the service loop
 	go func() {
+		log.Println("Service started.")
 		for {
 			select {
 			case <-ctx.Done():
-				log.Println("Received shutdown signal. Shutting down service...")
+				log.Println("Received shutdown signal.")
 				return
 			default:
-				// Placeholder for actual processing logic
 				log.Println("Service running...")
 				processMessages()
 				time.Sleep(5 * time.Second)
@@ -123,10 +123,12 @@ func processMessages() {
 	if err != nil {
 		log.Fatalf("Error marshalling JSON: %v", err)
 	}
+	log.Println("Finished message processing.")
 	fmt.Println(string(jsonBytes))
 }
 
 func messageFetcher(messageIDs []string) {
+	log.Println("Fetching messages...")
 	if cluster == nil {
 		log.Println("Cluster connection is not initialized.")
 		return
@@ -195,6 +197,7 @@ func messageFetcher(messageIDs []string) {
 	if len(messageIDsToQuery) > 0 {
 		messageFetcher(messageIDsToQuery)
 	}
+	log.Println("Finished fetching messages.")
 }
 
 func containsMessage(messages []Message, id string) bool {
@@ -220,6 +223,7 @@ func contains(ids []string, id string) bool {
 // -------------------------------------------------------//
 
 func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, error) {
+	log.Println("Processing message threading...")
 	var messagesNestedInAThread []Message
 
 	// Find the original message
@@ -326,6 +330,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 		}
 	}
 
+	log.Println("Finished processing message threading.")
 	return messagesNestedInAThread, nil
 }
 
@@ -370,6 +375,7 @@ func findMessageByID(messages []Message, id string) *Message {
 // experimenting with formatting output for use within nostr_site web application //
 
 // NOTE: not sure if this is the best way to structure or name the output (this is really a "Thread" we're constructing, right?)...
+// Formatting output for use within nostr_site web application
 type MessagesView struct {
 	Messages           []Message `json:"messages"`
 	AllMessagesContent string    `json:"all_messages_content"` // NOTE: ideally rename to "msgs_concatenated" or similar that lexically sorts lower than "messages" to keep the output JSON in a human-friendly order
