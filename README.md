@@ -29,13 +29,35 @@ The primary goals of the `nostr_threads` project are:
    - Integration with Couchbase for storing and retrieving Nostr messages.
 2. **Thread Management**:
    - Implemented basic thread management logic using a flattened structure.
-  
+
+### Implementation Plan
+
+1. **Convert `nostr_threads` to a Daemon Service**
+   - Refactor `main.go` to initialize Couchbase connection and start the message processing loop.
+   - Implement signal handling for graceful shutdown.
+
+2. **Define and Implement Flattened JSON Structure for Threads**
+   - Redefine the JSON structure and update the Couchbase schema if necessary.
+
+3. **Improve Thread Management Algorithms**
+   - Enhance the logic for handling complex threading scenarios.
+   - Add unit tests to cover all cases.
+
+4. **Implement URL Parsing and Multimodal Model Integration**
+   - Develop the URL parsing logic to handle various edge cases.
+   - Integrate the multimodal model to process media URLs and generate metadata.
+
+5. **Enhance Documentation and Testing**
+   - Review and update code comments to be godoc compatible.
+   - Write comprehensive unit tests and implement regression and integration testing.
+
+Would you like to proceed with these changes? If so, I can start by converting `nostr_threads` to a daemon service and defining the flattened JSON structure for threads.
+
 ## TODO
 - [ ] **General**
-  - [ ] Prioritize our priorities with this project
   - [ ] Convert `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 - [ ] **Thread Management**:
-  - [ ] (re?)define and (re?)implement a flattened JSON structure for threads.
+  - [ ] Define and implement a flattened JSON structure for threads.
   - [ ] Improve thread management algorithms to handle complex threading scenarios.
   - [ ] Implement unit tests for all thread management functionality.
   - [ ] Insert freshly generated threads into Couchbase.
