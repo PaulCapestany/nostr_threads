@@ -1,42 +1,62 @@
 # nostr_threads
 
-## Purpose
-`nostr_threads` is a service designed to build, manage, and enhance Nostr message threads. It organizes individual Nostr messages into coherent threads, processes media content, and ensures efficient data handling for optimal user experience and search capabilities.
+## Project Purpose
+`nostr_threads` is a service meant to focus on handling thread management and media processing for Nostr messages in order for [`nostr_site`](http://github.com/paulcapestany/nostr_site) to be able to offer an optimal user experience and search capabilities.
 
 ## Goals
-1. **Thread Management**:
-   - Assemble threads from individual Nostr messages.
-   - Maintain a flattened JSON structure for efficient data handling and querying.
-2. **Media Handling**:
-   - Display media URLs (images, videos, GIFs) inline within threads.
-   - Convert non-media URLs into clickable links.
-   - Use multimodal models to generate descriptions and metadata for media content.
-3. **Relevance and Ranking**:
-   - Incorporate metadata to rank search results.
-   - Implement fragment highlighting to show users the most relevant parts of the content.
 
-## Features
-- **Efficient Thread Assembly**: Organize replies, reactions, and interactions into coherent threads.
-- **Media Processing**: Automatically render media inline and generate descriptive metadata.
-- **Hybrid Search Support**: Prepare threads for integration with hybrid FTS and vector similarity search.
-- **Optimized JSON Structure**: Use a flattened JSON structure to facilitate efficient querying and updating.
+The primary goals of the `nostr_threads` project are:
 
+1. **Thread Management**: Efficiently manage Nostr discussion threads for display via `nostr_site`.
+2. **Media Processing**: Identify, classify, and render URLs in Nostr messages as inline media or clickable links.
+3. **Multimodal Processing**: Use a multimodal model to create textual descriptions, summaries, and categorization of links to images and other media for use via hybrid Full-Text Search (FTS) and vector similarity search using Couchbase capabilities.
+
+## Key Decisions
+
+1. **Flattened Structure for Threads**:
+   - Using a flattened structure approach for dealing with Nostr threads in Couchbase.
+2. **Concatenated-thread Embeddings**:
+   - Structuring JSON for threads using concatenated-thread embeddings for hybrid FTS and vector similarity search.
+3. **Handling URLs**:
+   - Identify, classify, and render URLs in Nostr message content as either inline media or clickable links.
+4. **Separate Service**:
+   - Handling thread management and media processing in a separate service (`nostr_threads`) from the main `nostr_site`.
+
+## Current Progress
+
+1. **Basic Service Setup**:
+   - Initial setup of the `nostr_threads` service.
+   - Integration with Couchbase for storing and retrieving Nostr messages.
+2. **Thread Management**:
+   - Implemented basic thread management logic using a flattened structure.
+  
 ## TODO
+- [ ] **General**
+  - [ ] Prioritize our priorities with this project
+  - [ ] Convert `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 - [ ] **Thread Management**:
-  - [ ] Define and implement a flattened JSON structure for threads.
-  - [ ] Develop a mechanism to assemble threads from individual messages.
+  - [ ] (re?)define and (re?)implement a flattened JSON structure for threads.
+  - [ ] Improve thread management algorithms to handle complex threading scenarios.
+  - [ ] Implement unit tests for all thread management functionality.
+  - [ ] Insert freshly generated threads into Couchbase.
+  - [ ] Determine the best method for updating threads as new Nostr messages come in.
 - [ ] **Media Handling**:
-  - [ ] Implement URL parsing to distinguish media from non-media links.
-  - [ ] Integrate a multimodal model to generate descriptions and metadata for media URLs.
-- [ ] **Relevance and Ranking**:
-  - [ ] Develop algorithms to rank threads based on metadata.
-  - [ ] Implement fragment highlighting for search results.
-- [ ] **Testing**:
+  - [ ] Implement URL parsing to distinguish media from non-media links (tests will be especially important for this).
+    - [ ] URL parsing must handle URLs interspersed in text (written by humans), including (but not limited to):
+      - [ ] URLs enclosed in quotation marks, parentheses, brackets, etc.
+      - [ ] URLs that are missing http://.
+      - [ ] URLs that may have commas, periods, etc., directly before/after them.
+  - [ ] Integrate a multimodal model to generate textual descriptions and metadata for media URLs.
+- [ ] **Documentation and Testing**:
+  - [ ] Review existing code comments and, if necessary, provide more detail and/or documentation for all code.
   - [ ] Write unit tests for all functionalities.
+  - [ ] Implement regression tests for all features.
   - [ ] Perform integration testing with the existing `nostr_site` project.
 
 ## Getting Started
+
 ### Prerequisites
+- [Go 1.22.2](https://golang.org/dl/)
 - [Couchbase Server 7.6](https://www.couchbase.com/downloads)
 - [gocb v2.8.1](https://github.com/couchbase/gocb)
 - [Nostr protocol specification](https://github.com/nostr-protocol/nips)
@@ -51,26 +71,32 @@
     ```shell
     go mod tidy
     ```
+3. Build:
+   ```shell
+   go install ./...
+   ``` 
+
 
 ### Usage
 1. Start the service:
     ```shell
-    go run main.go
+    nostr_threads
     ```
-
 2. Configure `nostr_site` to interact with `nostr_threads`.
 
 ### Future Directions
 
-For now, `nostr_threads` is meant as the quickest way to get to a demoable proof of concept. Eventually it might make sense to use a different approach, e.g. modifying and enhancing individual Nostr messages one by one as they come in (importantly adding a "thread_id" to each one). But, there might be tradeoffs that need to be carefully considered, so, TBD.
+For now, `nostr_threads` is meant as the quickest way to get to a demo going for a proof of concept. Eventually it might make sense to use a different approach, e.g. modifying and enhancing individual Nostr messages one by one as they come in (importantly adding a "thread_id" to each one). But, there might be tradeoffs that need to be carefully considered, so, TBD.
 
 ## Contributing
 1. Fork the repository.
 2. Create a new branch for your feature/bugfix.
 3. Submit a pull request with a detailed description of your changes.
 
-## License
-This project is licensed under the MIT License.
+## Contact
+
+For any questions or suggestions, please contact [Paul](http://github.com/paulcapestany).
+
 
 ---
 
