@@ -11,6 +11,8 @@ import (
 	"github.com/couchbase/gocb/v2"
 )
 
+// FIXME: it'd be good to make sure comments are godoc compatabile so that they can be used to generate documentation
+// below is the structure of a Nostr Message as it is stored in the Couchbase database (except for the ParentID, Depth, and Replies fields)
 type Message struct {
 	Content   interface{}   `json:"content"`
 	CreatedAt int64         `json:"created_at"`
@@ -19,9 +21,9 @@ type Message struct {
 	Pubkey    string        `json:"pubkey"`
 	Sig       string        `json:"sig"`
 	Tags      []interface{} `json:"tags"`
-	ParentID  string        `json:"parent_id"`
-	Depth     int           `json:"depth"`
-	Replies   []Message     `json:"replies"`
+	ParentID  string        `json:"parent_id"` // NOTE: "ParentID" is not present in the DB, this is added for processing, but does it make sense to have here?
+	Depth     int           `json:"depth"`     // NOTE: "Depth" is not present in the DB, this is added for processing, but does it make sense to have here?
+	Replies   []Message     `json:"replies"`   // NOTE: "replies" is not present in the DB, this is added for processing, but does it make sense to have here?
 }
 
 var cluster *gocb.Cluster
@@ -37,6 +39,7 @@ func main() {
 	// Initialize Couchbase connection
 	var err error
 	cluster, err = gocb.Connect("couchbase://localhost", gocb.ClusterOptions{
+		// FIXME: Username and password are hardcoded for now, but should be read from a secure location
 		Username: "admin",
 		Password: "hangman8june4magician9traverse8disbar4majolica4bacilli",
 	})
@@ -72,7 +75,7 @@ func main() {
 	// Concatenate message contents
 	var allMessagesContent string
 	for _, msg := range views {
-		allMessagesContent += fmt.Sprintf("%s\n\n", msg.MessageContent)
+		allMessagesContent += fmt.Sprintf("%s\n\n", msg.MessageContent) // NOTE: not sure if newlines are the best way to separate messages, especially because in Couchbase FTS highlighting fragments it will be difficult to distinguish between the end of one message and the start of another. Maybe a different separator would be better?
 	}
 
 	// Create the final JSON structure
@@ -126,7 +129,8 @@ func messageFetcher(messageIDs []string) {
 				continue
 			}
 			if msg.Kind != 1 {
-				continue // Skip messages that are not of kind 1
+				continue // Skip messages that are not of Nostr kind 1
+				// NOTE: eventually we will want to process and include other "kind"s of message data as well (e.g. reposts, reactions, zaps, etc.)
 			}
 
 			// Convert content to string regardless of its original type
@@ -329,11 +333,13 @@ func findMessageByID(messages []Message, id string) *Message {
 }
 
 ////////////////////////////////////////////////////////////////////////////////////
-// experimenting with formatting output for viewing purposes differently...
+// experimenting with formatting output for use within nostr_site web application //
 
+// NOTE: not sure if this is the best way to structure or name the output (this is really a "Thread" we're constructing, right?)...
 type MessagesView struct {
-	AllMessagesContent string    `json:"all_messages_content"`
 	Messages           []Message `json:"messages"`
+	AllMessagesContent string    `json:"all_messages_content"` // NOTE: ideally rename to "msgs_concatenated" or similar that lexically sorts lower than "messages" to keep the output JSON in a human-friendly order
+	// NOTE: vector_embedding of a thread's concatenated content should probably go here?
 }
 
 type MessageView struct {
@@ -342,7 +348,7 @@ type MessageView struct {
 	CreatedAt      int64  `json:"created_at"`
 	User           string `json:"user"`
 	MessageContent string `json:"message_content"`
-	Depth          int    `json:"depth"`
+	Depth          int    `json:"depth"` // NOTE: it *seems* like this is helpful to keep track of for the nostr_site frontend, but I'm not sure if it's necessary?
 }
 
 func createMessageView(msg Message) MessageView {
