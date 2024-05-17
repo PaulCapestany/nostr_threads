@@ -1,12 +1,16 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
 	"sort"
+	"syscall"
+	"time"
 
 	"github.com/couchbase/gocb/v2"
 )
@@ -28,13 +32,14 @@ type Message struct {
 
 var cluster *gocb.Cluster
 var allUniqueThreadMessages []Message
+var messageIDsToQuery []string
 
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatalf("Usage: %s <messageID>", os.Args[0])
 	}
 	initialID := os.Args[1]
-	messageIDsToQuery := []string{initialID}
+	messageIDsToQuery = []string{initialID}
 
 	// Initialize Couchbase connection
 	var err error
@@ -47,6 +52,34 @@ func main() {
 		log.Fatalf("Could not connect to Couchbase: %v", err)
 	}
 	defer cluster.Close(nil)
+
+	// Create a context that is canceled on interrupt signals
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	// Start the service loop
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				log.Println("Shutting down service...")
+				return
+			default:
+				// Placeholder for actual processing logic
+				log.Println("Service running...")
+				processMessages()
+				time.Sleep(5 * time.Second)
+			}
+		}
+	}()
+
+	// Wait for the context to be canceled
+	<-ctx.Done()
+	log.Println("Service stopped.")
+}
+
+// Placeholder function to process messages
+func processMessages() {
 
 	// Start fetching messages recursively
 	messageFetcher(messageIDsToQuery)
