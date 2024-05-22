@@ -1,0 +1,124 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
+	"time"
+
+	"github.com/couchbase/gocb/v2"
+	"github.com/gorilla/mux"
+)
+
+// Message represents a Nostr message structure
+type Message struct {
+	Content   interface{}   `json:"content"`
+	CreatedAt int64         `json:"created_at"`
+	ID        string        `json:"id"`
+	Kind      int           `json:"kind"`
+	Pubkey    string        `json:"pubkey"`
+	Sig       string        `json:"sig"`
+	Tags      []interface{} `json:"tags"`
+	ParentID  string        `json:"parent_id"`
+	Depth     int           `json:"depth"`
+	Replies   []Message     `json:"replies"`
+}
+
+var cluster *gocb.Cluster
+
+func main() {
+	// Initialize Couchbase connection
+	var err error
+	cluster, err = gocb.Connect("couchbase://localhost", gocb.ClusterOptions{
+		Username: "admin",
+		Password: "hangman8june4magician9traverse8disbar4majolica4bacilli",
+	})
+	if err != nil {
+		log.Fatalf("Could not connect to Couchbase: %v", err)
+	}
+	defer cluster.Close(nil)
+
+	// Set up the HTTP server
+	r := mux.NewRouter()
+	r.HandleFunc("/nostr/update_thread", UpdateThreadHandler).Methods("POST")
+
+	srv := &http.Server{
+		Handler:      r,
+		Addr:         "0.0.0.0:8081",
+		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	done := make(chan bool)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
+	go func() {
+		defer wg.Done()
+		<-ctx.Done()
+
+		log.Println("Shutting down server...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		srv.SetKeepAlivesEnabled(false)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Fatalf("Could not gracefully shut down the server: %v\n", err)
+		}
+		close(done)
+	}()
+
+	log.Println("Starting server on :8081")
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("Could not listen on :8081: %v\n", err)
+	}
+
+	<-done
+	log.Println("Server stopped")
+	wg.Wait()
+}
+
+// UpdateThreadHandler handles placing the new message in the appropriate thread
+func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
+	var payload struct {
+		ID      string  `json:"id"`
+		Message Message `json:"message"`
+	}
+
+	// Decode the request body
+	err := json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Log the payload for debugging
+	log.Printf("Received payload: %+v\n", payload)
+
+	// Call the function to place the message in the appropriate thread
+	err = placeMessageInThread(payload.ID, payload.Message)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+// Placeholder function to place a message in a thread
+func placeMessageInThread(id string, message Message) error {
+	// This function should contain the logic to place the message in the correct thread
+	// For now, it just logs the message and returns nil
+	log.Printf("Placing message in thread: %+v\n", message)
+	return nil
+}
