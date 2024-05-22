@@ -29,6 +29,7 @@ The primary goals of the `nostr_threads` project are:
    - Integration with Couchbase for storing and retrieving Nostr messages.
 2. **Thread Management**:
    - Implemented basic thread management logic using a flattened structure.
+   - Passed initial unit tests for creating and updating threads.
 3. **Daemon Service**:
    - Converted `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 
@@ -53,16 +54,15 @@ The primary goals of the `nostr_threads` project are:
    - Review and update code comments to be godoc compatible.
    - Write comprehensive unit tests and implement regression and integration testing.
 
-
 ## TODO
 - [x] **General**
   - [x] Convert `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 - [ ] **Thread Management**:
   - [ ] Define and implement a flattened JSON structure for threads.
   - [ ] Improve thread management algorithms to handle complex threading scenarios.
-  - [ ] Implement unit tests for all thread management functionality.
-  - [ ] Insert freshly generated threads into Couchbase.
-  - [ ] Determine the best method for updating threads as new Nostr messages come in.
+  - [x] Implement unit tests for all thread management functionality.
+  - [x] Insert freshly generated threads into Couchbase.
+  - [x] Determine the best method for updating threads as new Nostr messages come in.
 - [ ] **Media Handling**:
   - [ ] Implement URL parsing to distinguish media from non-media links (tests will be especially important for this).
     - [ ] URL parsing must handle URLs interspersed in text (written by humans), including (but not limited to):
