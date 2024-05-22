@@ -58,7 +58,9 @@ func main() {
 
 	// Set up the HTTP server
 	r := mux.NewRouter()
-	r.HandleFunc("/nostr/update_thread", UpdateThreadHandler).Methods("POST")
+	r.HandleFunc("/nostr/update_thread", func(w http.ResponseWriter, r *http.Request) {
+		UpdateThreadHandler(w, r, cluster)
+	}).Methods("POST")
 
 	srv := &http.Server{
 		Handler:      r,
@@ -102,7 +104,7 @@ func main() {
 }
 
 // UpdateThreadHandler handles placing the new message in the appropriate thread
-func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
+func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
 	var payload struct {
 		ID      string  `json:"id"`
 		Message Message `json:"message"`
@@ -117,7 +119,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
 	log.Printf("Received payload: %+v\n", payload)
 
 	// Call the function to place the message in the appropriate thread
-	err = placeMessageInThread(payload.ID, payload.Message)
+	err = placeMessageInThread(payload.ID, payload.Message, cluster)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -126,33 +128,20 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// Recursive function to piece together threads
-func placeMessageInThread(id string, message Message) error {
+// Function to place a message in a thread
+func placeMessageInThread(id string, message Message, cluster *gocb.Cluster) error {
 	bucket := cluster.Bucket("all_nostr_events")
 	collection := bucket.DefaultCollection()
 
-	// Fetch the document from Couchbase
-	getResult, err := collection.Get(id, nil)
-	if err != nil {
-		return err
-	}
-
-	var thread Thread
-	err = getResult.Content(&thread)
-	if err != nil {
-		return err
-	}
-
-	// Check if message is a reply
 	if message.ParentID != "" {
-		// Find parent message
-		parentResult, err := collection.Get(message.ParentID, nil)
+		// Fetch parent thread from Couchbase
+		getResult, err := collection.Get(message.ParentID, nil)
 		if err != nil {
 			return err
 		}
 
 		var parentThread Thread
-		err = parentResult.Content(&parentThread)
+		err = getResult.Content(&parentThread)
 		if err != nil {
 			return err
 		}
@@ -166,11 +155,19 @@ func placeMessageInThread(id string, message Message) error {
 			return err
 		}
 	} else {
-		// Append message to the current thread
-		thread.Messages = append(thread.Messages, message)
+		// Create a new thread for the message
+		newThread := Thread{
+			CreatedAt:            message.CreatedAt,
+			ID:                   message.ID,
+			Kind:                 message.Kind,
+			Pubkey:               message.Pubkey,
+			Messages:             []Message{message},
+			XConcatenatedContent: "",
+			XEmbeddings:          0,
+		}
 
-		// Update the current thread in Couchbase
-		_, err = collection.Upsert(id, thread, nil)
+		// Insert new thread into Couchbase
+		_, err := collection.Upsert(message.ID, newThread, nil)
 		if err != nil {
 			return err
 		}
