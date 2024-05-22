@@ -22,7 +22,7 @@ func TestPlaceMessageInThread_NewThread(t *testing.T) {
 	}
 
 	// Test
-	err = placeMessageInThread(message.ID, message)
+	err = placeMessageInThread(message.ID, message, testCluster)
 	if err != nil {
 		t.Fatalf("Failed to place message in thread: %v", err)
 	}
@@ -91,7 +91,7 @@ func TestPlaceMessageInThread_ExistingThread(t *testing.T) {
 	}
 
 	// Test
-	err = placeMessageInThread(childMessage.ID, childMessage)
+	err = placeMessageInThread(childMessage.ID, childMessage, testCluster)
 	if err != nil {
 		t.Fatalf("Failed to place child message in thread: %v", err)
 	}
