@@ -2,14 +2,16 @@ module github.com/paulcapestany/nostr_threads
 
 go 1.22.2
 
-require github.com/couchbase/gocb/v2 v2.8.1
+require (
+	github.com/couchbase/gocb/v2 v2.8.1
+	github.com/gorilla/mux v1.8.1
+)
 
 require (
 	github.com/couchbase/gocbcore/v10 v10.4.1 // indirect
 	github.com/couchbase/gocbcoreps v0.1.2 // indirect
 	github.com/couchbase/goprotostellar v1.0.2 // indirect
 	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20230515165046-68b522a21131 // indirect
-	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect

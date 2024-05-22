@@ -10,6 +10,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"sync"
 	"syscall"
 	"time"
 
@@ -38,6 +39,12 @@ var allUniqueThreadMessages []Message
 var messageIDsToQuery []string
 
 func main() {
+	if len(os.Args) < 2 {
+		log.Fatalf("Usage: %s <messageID>", os.Args[0])
+	}
+	initialID := os.Args[1]
+	messageIDsToQuery = []string{initialID}
+
 	// Initialize Couchbase connection
 	var err error
 	cluster, err = gocb.Connect("couchbase://localhost", gocb.ClusterOptions{
@@ -50,54 +57,49 @@ func main() {
 	}
 	defer cluster.Close(nil)
 
-	// Create a context that is canceled on interrupt signals
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
 	// Set up the HTTP server
 	r := mux.NewRouter()
 	r.HandleFunc("/api/update_thread", UpdateThreadHandler).Methods("POST")
 
-	server := &http.Server{
-		Addr:    ":8000",
-		Handler: r,
+	srv := &http.Server{
+		Handler:      r,
+		Addr:         "0.0.0.0:8080",
+		WriteTimeout: 15 * time.Second,
+		ReadTimeout:  15 * time.Second,
+		IdleTimeout:  60 * time.Second,
 	}
 
-	// Start the HTTP server
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	done := make(chan bool)
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	go func() {
-		log.Println("HTTP server started on :8000")
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Could not listen on :8000: %v", err)
+		defer wg.Done()
+		<-ctx.Done()
+
+		log.Println("Shutting down server...")
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+
+		srv.SetKeepAlivesEnabled(false)
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Fatalf("Could not gracefully shut down the server: %v\n", err)
 		}
+		close(done)
 	}()
 
-	// Start the service loop
-	go func() {
-		log.Println("Service started.")
-		for {
-			select {
-			case <-ctx.Done():
-				log.Println("Received shutdown signal.")
-				return
-			default:
-				log.Println("Service running...")
-				processMessages()
-				time.Sleep(5 * time.Second)
-			}
-		}
-	}()
-
-	// Wait for the context to be canceled
-	<-ctx.Done()
-	log.Println("Service stopped.")
-
-	// Graceful shutdown of the HTTP server
-	ctxShutDown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-	if err := server.Shutdown(ctxShutDown); err != nil {
-		log.Fatalf("HTTP server Shutdown Failed:%+v", err)
+	log.Println("Starting server on :8080")
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Fatalf("Could not listen on :8080: %v\n", err)
 	}
-	log.Println("HTTP server stopped.")
+
+	<-done
+	log.Println("Server stopped")
+	wg.Wait()
 }
 
 // UpdateThreadHandler handles placing the new message in the appropriate thread
