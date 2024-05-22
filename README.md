@@ -32,7 +32,7 @@ The primary goals of the `nostr_threads` project are:
 3. **Daemon Service**:
    - Converted `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 
-### Implementation Plan
+## Implementation Plan
 
 1. **Define and Implement Flattened JSON Structure for Threads**
    - Redefine the JSON structure and update the Couchbase schema if necessary.
@@ -45,11 +45,14 @@ The primary goals of the `nostr_threads` project are:
    - Develop the URL parsing logic to handle various edge cases.
    - Integrate the multimodal model to process media URLs and generate metadata.
 
-4. **Enhance Documentation and Testing**
+4. **Integrate with Couchbase Eventing**
+   - Set up a Couchbase Eventing function to detect new messages.
+   - Define an API endpoint in `nostr_threads` to handle new messages and update threads in real-time.
+
+5. **Enhance Documentation and Testing**
    - Review and update code comments to be godoc compatible.
    - Write comprehensive unit tests and implement regression and integration testing.
 
-Would you like to proceed with these changes? If so, I can start by defining and implementing the flattened JSON structure for threads.
 
 ## TODO
 - [x] **General**
