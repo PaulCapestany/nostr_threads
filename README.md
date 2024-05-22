@@ -29,33 +29,31 @@ The primary goals of the `nostr_threads` project are:
    - Integration with Couchbase for storing and retrieving Nostr messages.
 2. **Thread Management**:
    - Implemented basic thread management logic using a flattened structure.
+3. **Daemon Service**:
+   - Converted `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 
 ### Implementation Plan
 
-1. **Convert `nostr_threads` to a Daemon Service**
-   - Refactor `main.go` to initialize Couchbase connection and start the message processing loop.
-   - Implement signal handling for graceful shutdown.
-
-2. **Define and Implement Flattened JSON Structure for Threads**
+1. **Define and Implement Flattened JSON Structure for Threads**
    - Redefine the JSON structure and update the Couchbase schema if necessary.
 
-3. **Improve Thread Management Algorithms**
+2. **Improve Thread Management Algorithms**
    - Enhance the logic for handling complex threading scenarios.
    - Add unit tests to cover all cases.
 
-4. **Implement URL Parsing and Multimodal Model Integration**
+3. **Implement URL Parsing and Multimodal Model Integration**
    - Develop the URL parsing logic to handle various edge cases.
    - Integrate the multimodal model to process media URLs and generate metadata.
 
-5. **Enhance Documentation and Testing**
+4. **Enhance Documentation and Testing**
    - Review and update code comments to be godoc compatible.
    - Write comprehensive unit tests and implement regression and integration testing.
 
-Would you like to proceed with these changes? If so, I can start by converting `nostr_threads` to a daemon service and defining the flattened JSON structure for threads.
+Would you like to proceed with these changes? If so, I can start by defining and implementing the flattened JSON structure for threads.
 
 ## TODO
-- [ ] **General**
-  - [ ] Convert `nostr_threads` from a CLI tool to a daemon service that continuously runs.
+- [x] **General**
+  - [x] Convert `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 - [ ] **Thread Management**:
   - [ ] Define and implement a flattened JSON structure for threads.
   - [ ] Improve thread management algorithms to handle complex threading scenarios.
@@ -74,6 +72,8 @@ Would you like to proceed with these changes? If so, I can start by converting `
   - [ ] Write unit tests for all functionalities.
   - [ ] Implement regression tests for all features.
   - [ ] Perform integration testing with the existing `nostr_site` project.
+- [ ] **Other**:
+  - [ ] Set up integrated task/commit/changelog workflow via [semantic-release](https://github.com/go-semantic-release/semantic-release).
 
 ## Getting Started
 
@@ -93,11 +93,10 @@ Would you like to proceed with these changes? If so, I can start by converting `
     ```shell
     go mod tidy
     ```
-3. Build:
+3. Build/test:
    ```shell
-   go install ./...
+   go mod tidy && go install ./... && go test -v
    ``` 
-
 
 ### Usage
 1. Start the service:
