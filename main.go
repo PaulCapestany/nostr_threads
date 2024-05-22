@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
 	"sort"
@@ -13,10 +14,12 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
+	"github.com/gorilla/mux"
 )
 
 // FIXME: it'd be good to make sure comments are godoc compatabile so that they can be used to generate documentation
 // below is the structure of a Nostr Message as it is stored in the Couchbase database (except for the ParentID, Depth, and Replies fields)
+// Message represents a Nostr message structure
 type Message struct {
 	Content   interface{}   `json:"content"`
 	CreatedAt int64         `json:"created_at"`
@@ -35,12 +38,6 @@ var allUniqueThreadMessages []Message
 var messageIDsToQuery []string
 
 func main() {
-	if len(os.Args) < 2 {
-		log.Fatalf("Usage: %s <messageID>", os.Args[0])
-	}
-	initialID := os.Args[1]
-	messageIDsToQuery = []string{initialID}
-
 	// Initialize Couchbase connection
 	var err error
 	cluster, err = gocb.Connect("couchbase://localhost", gocb.ClusterOptions{
@@ -56,6 +53,23 @@ func main() {
 	// Create a context that is canceled on interrupt signals
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Set up the HTTP server
+	r := mux.NewRouter()
+	r.HandleFunc("/api/update_thread", UpdateThreadHandler).Methods("POST")
+
+	server := &http.Server{
+		Addr:    ":8000",
+		Handler: r,
+	}
+
+	// Start the HTTP server
+	go func() {
+		log.Println("HTTP server started on :8000")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Could not listen on :8000: %v", err)
+		}
+	}()
 
 	// Start the service loop
 	go func() {
@@ -76,6 +90,35 @@ func main() {
 	// Wait for the context to be canceled
 	<-ctx.Done()
 	log.Println("Service stopped.")
+
+	// Graceful shutdown of the HTTP server
+	ctxShutDown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := server.Shutdown(ctxShutDown); err != nil {
+		log.Fatalf("HTTP server Shutdown Failed:%+v", err)
+	}
+	log.Println("HTTP server stopped.")
+}
+
+// UpdateThreadHandler handles placing the new message in the appropriate thread
+func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
+	var payload Message
+
+	// Decode the request body
+	err := json.NewDecoder(r.Body).Decode(&payload)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Call the function to place the message in the appropriate thread
+	err = placeMessageInThread(payload.ID, payload)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }
 
 // Placeholder function to process messages
@@ -165,8 +208,8 @@ func messageFetcher(messageIDs []string) {
 				continue
 			}
 			if msg.Kind != 1 {
-				continue // Skip messages that are not of Nostr kind 1
 				// NOTE: eventually we will want to process and include other "kind"s of message data as well (e.g. reposts, reactions, zaps, etc.)
+				continue
 			}
 
 			// Convert content to string regardless of its original type
@@ -218,15 +261,10 @@ func contains(ids []string, id string) bool {
 	return false
 }
 
-// -------------------------------------------------------//
-// The following deals with nesting/threading of messages //
-// -------------------------------------------------------//
-
 func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, error) {
 	log.Println("Processing message threading...")
 	var messagesNestedInAThread []Message
 
-	// Find the original message
 	var originalMessage *Message
 	var maxMentions int
 	for i, msg := range allUniqueThreadMessages {
@@ -274,7 +312,6 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 		}
 	}
 
-	// Process remaining messages
 	for len(allUniqueThreadMessages) > 0 {
 		msg := allUniqueThreadMessages[0]
 		etags := getETags(msg.Tags)
@@ -282,7 +319,6 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 		var processed bool
 
 		if len(etags) == 1 {
-			// Case a: Message has only one etag
 			if parentMsg := findMessageByID(messagesNestedInAThread, etags[0][1]); parentMsg != nil {
 				msg.Depth = parentMsg.Depth + 1
 				msg.ParentID = parentMsg.ID
@@ -290,7 +326,6 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 				processed = true
 			}
 		} else if len(etags) > 1 {
-			// Case b: Message has multiple etags and one of them has etag[3] == "reply"
 			for _, etag := range etags {
 				if len(etag) >= 4 && etag[3] == "reply" {
 					if parentMsg := findMessageByID(messagesNestedInAThread, etag[1]); parentMsg != nil {
@@ -304,7 +339,6 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 			}
 
 			if !processed {
-				// Case c: Message has multiple etags and none of them have etag[3] == "reply"
 				var maxDepth int
 				var parentMsg *Message
 				for _, etag := range etags {
@@ -325,7 +359,6 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 		if processed {
 			allUniqueThreadMessages = allUniqueThreadMessages[1:]
 		} else {
-			// If none of the above cases match, skip the message
 			allUniqueThreadMessages = allUniqueThreadMessages[1:]
 		}
 	}
@@ -371,9 +404,6 @@ func findMessageByID(messages []Message, id string) *Message {
 	return nil
 }
 
-////////////////////////////////////////////////////////////////////////////////////
-// experimenting with formatting output for use within nostr_site web application //
-
 // NOTE: not sure if this is the best way to structure or name the output (this is really a "Thread" we're constructing, right?)...
 // Formatting output for use within nostr_site web application
 type MessagesView struct {
@@ -400,4 +430,20 @@ func createMessageView(msg Message) MessageView {
 		MessageContent: fmt.Sprintf("%v", msg.Content),
 		Depth:          msg.Depth,
 	}
+}
+
+// placeMessageInThread contains the logic to place a message in a thread
+func placeMessageInThread(id string, message Message) error {
+	// Implement the recursion and complex logic here
+	// This function updates the appropriate thread in Couchbase
+
+	// Example pseudo-code:
+	// 1. Fetch the thread based on the message's reply_to field.
+	// 2. Recursively find the correct position within the thread.
+	// 3. Update the thread with the new message.
+
+	// This is a simplified placeholder implementation:
+	// Actual implementation should handle recursive logic properly
+
+	return nil
 }
