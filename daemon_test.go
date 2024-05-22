@@ -8,7 +8,6 @@ import (
 )
 
 func TestServiceStartup(t *testing.T) {
-	// Provide a dummy messageID as an argument
 	cmd := exec.Command("nostr_threads", "b1ae9ebeedc87d416227cf5563307188ec8f7f102e22cf3fa9f81c378cada159")
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 

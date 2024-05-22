@@ -55,7 +55,11 @@ func main() {
 	if err != nil {
 		log.Fatalf("Could not connect to Couchbase: %v", err)
 	}
-	defer cluster.Close(nil)
+	defer func() {
+		if err := cluster.Close(nil); err != nil {
+			log.Printf("Failed to close Couchbase cluster: %v", err)
+		}
+	}()
 
 	// Set up the HTTP server
 	r := mux.NewRouter()
@@ -104,6 +108,7 @@ func main() {
 
 // UpdateThreadHandler handles placing the new message in the appropriate thread
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
+	log.Println("UpdateThreadHandler called")
 	var payload Message
 
 	// Decode the request body
