@@ -108,14 +108,12 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
 		Message Message `json:"message"`
 	}
 
-	// Decode the request body
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	// Log the payload for debugging
 	log.Printf("Received payload: %+v\n", payload)
 
 	// Call the function to place the message in the appropriate thread
@@ -128,10 +126,55 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-// Placeholder function to place a message in a thread
+// Recursive function to piece together threads
 func placeMessageInThread(id string, message Message) error {
-	// This function should contain the logic to place the message in the correct thread
-	// For now, it just logs the message and returns nil
-	log.Printf("Placing message in thread: %+v\n", message)
+	bucket := cluster.Bucket("all_nostr_events")
+	collection := bucket.DefaultCollection()
+
+	// Fetch the document from Couchbase
+	getResult, err := collection.Get(id, nil)
+	if err != nil {
+		return err
+	}
+
+	var thread Thread
+	err = getResult.Content(&thread)
+	if err != nil {
+		return err
+	}
+
+	// Check if message is a reply
+	if message.ParentID != "" {
+		// Find parent message
+		parentResult, err := collection.Get(message.ParentID, nil)
+		if err != nil {
+			return err
+		}
+
+		var parentThread Thread
+		err = parentResult.Content(&parentThread)
+		if err != nil {
+			return err
+		}
+
+		// Append message to parent's messages
+		parentThread.Messages = append(parentThread.Messages, message)
+
+		// Update parent thread in Couchbase
+		_, err = collection.Upsert(message.ParentID, parentThread, nil)
+		if err != nil {
+			return err
+		}
+	} else {
+		// Append message to the current thread
+		thread.Messages = append(thread.Messages, message)
+
+		// Update the current thread in Couchbase
+		_, err = collection.Upsert(id, thread, nil)
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
