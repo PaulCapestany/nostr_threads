@@ -47,7 +47,6 @@ The primary goals of the `nostr_threads` project are:
    - Integrate the multimodal model to process media URLs and generate metadata.
 
 4. **Integrate with Couchbase Eventing**
-   - Set up a Couchbase Eventing function to detect new messages.
    - Define an API endpoint in `nostr_threads` to handle new messages and update threads in real-time.
 
 5. **Enhance Documentation and Testing**
@@ -58,10 +57,11 @@ The primary goals of the `nostr_threads` project are:
 - [x] **General**
   - [x] Convert `nostr_threads` from a CLI tool to a daemon service that continuously runs.
 - [ ] **Thread Management**:
-  - [ ] Define and implement a flattened JSON structure for threads.
+  - [x] Define and implement a flattened JSON structure for threads.
+  - [x] Set up a Couchbase Eventing function to detect new messages ([nostr_threads_eventing_function.json](nostr_threads_eventing_function.json)).
+  - [ ] Insert freshly generated/updated threads into Couchbase (**not** into *all_nostr_events* bucket, rather, into our *threads* bucket).
   - [ ] Improve thread management algorithms to handle complex threading scenarios.
-  - [x] Implement unit tests for all thread management functionality.
-  - [x] Insert freshly generated threads into Couchbase.
+  - [ ] Implement unit tests for all thread management functionality.
   - [x] Determine the best method for updating threads as new Nostr messages come in.
 - [ ] **Media Handling**:
   - [ ] Implement URL parsing to distinguish media from non-media links (tests will be especially important for this).
@@ -115,7 +115,7 @@ CREATE INDEX kind_and_event_lookup ON `default`:`all_nostr_events`.`_default`.`_
 
 ### Future Directions
 
-For now, `nostr_threads` is meant as the quickest way to get to a demo going for a proof of concept. Eventually it might make sense to use a different approach, e.g. modifying and enhancing individual Nostr messages one by one as they come in (importantly adding a "thread_id" to each one). But, there might be tradeoffs that need to be carefully considered, so, TBD.
+For now, `nostr_threads` is meant as the quickest way to get to a demo going for a proof of concept. Eventually it might make sense to use a different approach, e.g. modifying and enhancing individual Nostr messages one by one as they come in (importantly potentially adding a "thread_id" to each one). But, there might be tradeoffs that need to be carefully considered, so, TBD.
 
 ## Contributing
 1. Fork the repository.
