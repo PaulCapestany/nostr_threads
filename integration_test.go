@@ -45,6 +45,8 @@ func setupTestBucket(cluster *gocb.Cluster, bucketName string) (*gocb.Bucket, er
 }
 
 func TestUpdateThreadHandler_NewThread(t *testing.T) {
+	log.Println("Starting TestUpdateThreadHandler_NewThread")
+
 	// Setup
 	bucket, err := setupTestBucket(testCluster, "all_nostr_events")
 	if err != nil {
@@ -95,9 +97,13 @@ func TestUpdateThreadHandler_NewThread(t *testing.T) {
 	// Cleanup
 	cleanupTestData(bucket, []string{message.ID})
 	cleanupTestData(threadsBucket, []string{message.ID})
+
+	log.Println("TestUpdateThreadHandler_NewThread completed successfully")
 }
 
 func TestUpdateThreadHandler_ExistingThread(t *testing.T) {
+	log.Println("Starting TestUpdateThreadHandler_ExistingThread")
+
 	// Setup
 	bucket, err := setupTestBucket(testCluster, "all_nostr_events")
 	if err != nil {
@@ -165,6 +171,8 @@ func TestUpdateThreadHandler_ExistingThread(t *testing.T) {
 	// Cleanup
 	cleanupTestData(bucket, []string{parentMessage.ID, childMessage.ID})
 	cleanupTestData(threadsBucket, []string{parentMessage.ID})
+
+	log.Println("TestUpdateThreadHandler_ExistingThread completed successfully")
 }
 
 func cleanupTestData(bucket *gocb.Bucket, docIDs []string) {

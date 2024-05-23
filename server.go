@@ -47,6 +47,13 @@ type Thread struct {
 
 var cluster *gocb.Cluster
 
+func init() {
+	// Log to standard output
+	log.SetOutput(os.Stdout)
+	// Set log flags for more detailed output
+	log.SetFlags(log.LstdFlags | log.Lshortfile)
+}
+
 func main() {
 	// Initialize Couchbase connection
 	var err error
@@ -68,9 +75,9 @@ func main() {
 	srv := &http.Server{
 		Handler:      r,
 		Addr:         "0.0.0.0:8081",
-		WriteTimeout: 15 * time.Second,
-		ReadTimeout:  15 * time.Second,
-		IdleTimeout:  60 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		ReadTimeout:  60 * time.Second,
+		IdleTimeout:  90 * time.Second,
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -107,6 +114,8 @@ func main() {
 }
 
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
+	log.Println("UpdateThreadHandler called")
+
 	var payload struct {
 		ID      string  `json:"id"`
 		Message Message `json:"message"`
@@ -123,14 +132,16 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	// Fetch messages and construct the thread
 	messageIDsToQuery := []string{payload.ID}
 	var allUniqueThreadMessages []Message
+	log.Println("Calling messageFetcher")
 	messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, cluster)
 
-	// Sort messages by creation time
+	log.Println("Sorting messages by creation time")
 	sort.Slice(allUniqueThreadMessages, func(i, j int) bool {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
 	// Process message threading
+	log.Println("Calling processMessageThreading")
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -154,11 +165,14 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		XEmbeddings:          0,
 	}
 
+	log.Printf("New thread created: %+v\n", newThread)
+
 	// Use the "threads" bucket instead of "all_nostr_events"
 	bucket := cluster.Bucket("threads")
 	collection := bucket.DefaultCollection()
 
 	// Upsert the thread into Couchbase
+	log.Printf("Upserting thread into Couchbase: %s\n", newThread.ID)
 	_, err = collection.Upsert(newThread.ID, newThread, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -166,6 +180,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	}
 
 	w.WriteHeader(http.StatusOK)
+	log.Println("UpdateThreadHandler completed successfully")
 }
 
 func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster) {
