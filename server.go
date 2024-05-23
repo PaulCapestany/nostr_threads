@@ -54,7 +54,7 @@ func init() {
 	// Set log flags for more detailed output
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	go func() {
-		log.Println(http.ListenAndServe("localhost:6060", nil))
+		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 	}()
 }
 
@@ -150,9 +150,15 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	messageIDsToQuery := []string{payload.ID}
 	var allUniqueThreadMessages []Message
 	log.Println("Calling messageFetcher")
-	retryOperation(func() error {
+	err = retryOperation(func() error {
 		return messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, cluster)
 	}, 3)
+
+	if err != nil {
+		log.Printf("Failed to fetch messages: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
 
 	log.Println("Sorting messages by creation time")
 	sort.Slice(allUniqueThreadMessages, func(i, j int) bool {
@@ -193,7 +199,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 	// Upsert the thread into Couchbase
 	log.Printf("Upserting thread into Couchbase: %s\n", newThread.ID)
-	retryOperation(func() error {
+	err = retryOperation(func() error {
 		_, err = collection.Upsert(newThread.ID, newThread, nil)
 		return err
 	}, 3)
@@ -208,29 +214,29 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	log.Println("UpdateThreadHandler completed successfully")
 }
 
-func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster) {
+func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster) error {
 	if cluster == nil {
 		log.Println("Cluster connection is not initialized.")
-		return
+		return fmt.Errorf("cluster connection is not initialized")
 	}
 
 	var messageIDsToQuery []string // To collect all new message IDs from tags for further queries
 
 	for _, id := range messageIDs {
 		query := fmt.Sprintf(`WITH referencedMessages AS (
-			SELECT d.*
-			FROM `+"`all_nostr_events`._default._default"+` AS d
-			USE KEYS "%s"
+            SELECT d.*
+            FROM `+"`all_nostr_events`._default._default"+` AS d
+            USE KEYS "%s"
 
-			UNION
+            UNION
 
-			SELECT refMessage.*
-			FROM `+"`all_nostr_events`._default._default"+` AS refMessage
-			USE INDEX (kind_and_event_lookup USING GSI)
-			WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "%s" END)
-		)
-		SELECT message.content, message.created_at, message.id, message.kind, message.pubkey, message.sig, message.tags
-		FROM referencedMessages AS message`, id, id)
+            SELECT refMessage.*
+            FROM `+"`all_nostr_events`._default._default"+` AS refMessage
+            USE INDEX (kind_and_event_lookup USING GSI)
+            WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "%s" END)
+        )
+        SELECT message.content, message.created_at, message.id, message.kind, message.pubkey, message.sig, message.tags
+        FROM referencedMessages AS message`, id, id)
 
 		results, err := cluster.Query(query, nil)
 		if err != nil {
@@ -274,8 +280,10 @@ func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, clu
 
 	// Recursively fetch messages for newly discovered IDs if there are any
 	if len(messageIDsToQuery) > 0 {
-		messageFetcher(messageIDsToQuery, allUniqueThreadMessages, cluster)
+		return messageFetcher(messageIDsToQuery, allUniqueThreadMessages, cluster)
 	}
+
+	return nil
 }
 
 func containsMessage(messages []Message, id string) bool {
