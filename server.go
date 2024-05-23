@@ -117,6 +117,18 @@ func main() {
 	wg.Wait()
 }
 
+func retryOperation(operation func() error, retries int) error {
+	for i := 0; i < retries; i++ {
+		err := operation()
+		if err == nil {
+			return nil
+		}
+		log.Printf("Retry %d/%d failed: %v", i+1, retries, err)
+		time.Sleep(2 * time.Second) // Exponential backoff can be implemented here
+	}
+	return fmt.Errorf("operation failed after %d retries", retries)
+}
+
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
 	log.Println("UpdateThreadHandler called")
 
@@ -127,6 +139,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
+		log.Printf("Failed to decode payload: %v", err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
@@ -137,7 +150,9 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	messageIDsToQuery := []string{payload.ID}
 	var allUniqueThreadMessages []Message
 	log.Println("Calling messageFetcher")
-	messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, cluster)
+	retryOperation(func() error {
+		return messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, cluster)
+	}, 3)
 
 	log.Println("Sorting messages by creation time")
 	sort.Slice(allUniqueThreadMessages, func(i, j int) bool {
@@ -148,6 +163,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	log.Println("Calling processMessageThreading")
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
+		log.Printf("Failed to process message threading: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -177,8 +193,13 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 	// Upsert the thread into Couchbase
 	log.Printf("Upserting thread into Couchbase: %s\n", newThread.ID)
-	_, err = collection.Upsert(newThread.ID, newThread, nil)
+	retryOperation(func() error {
+		_, err = collection.Upsert(newThread.ID, newThread, nil)
+		return err
+	}, 3)
+
 	if err != nil {
+		log.Printf("Failed to upsert thread: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
