@@ -22,26 +22,17 @@ func TestPlaceMessageInThread_NewThread(t *testing.T) {
 	}
 
 	// Test
-	err = placeMessageInThread(message.ID, message, testCluster)
+	messageIDsToQuery := []string{message.ID}
+	var allUniqueThreadMessages []Message
+	messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, testCluster)
+
+	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
-		t.Fatalf("Failed to place message in thread: %v", err)
+		t.Fatalf("Failed to process message threading: %v", err)
 	}
 
-	// Verify
-	collection := bucket.DefaultCollection()
-	getResult, err := collection.Get(message.ID, nil)
-	if err != nil {
-		t.Fatalf("Failed to get thread from bucket: %v", err)
-	}
-
-	var thread Thread
-	err = getResult.Content(&thread)
-	if err != nil {
-		t.Fatalf("Failed to decode thread content: %v", err)
-	}
-
-	if len(thread.Messages) != 1 || thread.Messages[0].ID != message.ID {
-		t.Fatalf("Thread content does not match expected: %+v", thread)
+	if len(threadedProcessedMessages) != 1 || threadedProcessedMessages[0].ID != message.ID {
+		t.Fatalf("Thread content does not match expected: %+v", threadedProcessedMessages)
 	}
 
 	// Cleanup
@@ -86,30 +77,23 @@ func TestPlaceMessageInThread_ExistingThread(t *testing.T) {
 		Kind:      1,
 		Pubkey:    "pubkey_2",
 		Sig:       "signature_2",
-		Tags:      []interface{}{},
-		ParentID:  parentMessage.ID,
+		Tags: []interface{}{
+			[]interface{}{"e", parentMessage.ID},
+		},
 	}
 
 	// Test
-	err = placeMessageInThread(childMessage.ID, childMessage, testCluster)
+	messageIDsToQuery := []string{childMessage.ID}
+	var allUniqueThreadMessages []Message
+	messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, testCluster)
+
+	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
-		t.Fatalf("Failed to place child message in thread: %v", err)
+		t.Fatalf("Failed to process message threading: %v", err)
 	}
 
-	// Verify
-	getResult, err := collection.Get(parentMessage.ID, nil)
-	if err != nil {
-		t.Fatalf("Failed to get parent thread from bucket: %v", err)
-	}
-
-	var updatedThread Thread
-	err = getResult.Content(&updatedThread)
-	if err != nil {
-		t.Fatalf("Failed to decode updated thread content: %v", err)
-	}
-
-	if len(updatedThread.Messages) != 2 || updatedThread.Messages[1].ID != childMessage.ID {
-		t.Fatalf("Updated thread content does not match expected: %+v", updatedThread)
+	if len(threadedProcessedMessages) != 2 || threadedProcessedMessages[1].ID != childMessage.ID {
+		t.Fatalf("Thread content does not match expected: %+v", threadedProcessedMessages)
 	}
 
 	// Cleanup

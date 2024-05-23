@@ -85,6 +85,11 @@ The primary goals of the `nostr_threads` project are:
 - [Couchbase Server 7.6](https://www.couchbase.com/downloads)
 - [gocb v2.8.1](https://github.com/couchbase/gocb)
 - [Nostr protocol specification](https://github.com/nostr-protocol/nips)
+- Ensure a *threads* Couchbase bucket exists
+- Ensure the following Couchbase index exists in the *all_nostr_events* bucket:
+```sql
+CREATE INDEX kind_and_event_lookup ON `default`:`all_nostr_events`.`_default`.`_default`(`kind`,(distinct (array (`t`[1]) for `t` in `tags` when ((`t`[0]) = "e") end)))
+```
 
 ### Installation
 1. Clone the repository:
