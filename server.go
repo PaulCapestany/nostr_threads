@@ -214,13 +214,13 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	log.Println("UpdateThreadHandler completed successfully")
 }
 
-func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster) error {
+func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster) error {
 	if cluster == nil {
 		log.Println("Cluster connection is not initialized.")
 		return fmt.Errorf("cluster connection is not initialized")
 	}
 
-	var messageIDsToQuery []string // To collect all new message IDs from tags for further queries
+	var messageIDsToQuery []string
 
 	for _, id := range messageIDs {
 		query := fmt.Sprintf(`WITH referencedMessages AS (
@@ -245,20 +245,24 @@ func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, clu
 		}
 
 		for results.Next() {
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+
 			var msg Message
 			if err := results.Row(&msg); err != nil {
 				log.Printf("Failed to parse message: %v", err)
 				continue
 			}
 			if msg.Kind != 1 {
-				continue // Skip messages that are not of kind 1
+				continue
 			}
 
-			// Convert content to string regardless of its original type
 			contentStr := fmt.Sprintf("%v", msg.Content)
 			msg.Content = contentStr
 
-			// Process tags to find new message IDs to query
 			for _, tag := range msg.Tags {
 				tagSlice, ok := tag.([]interface{})
 				if !ok || len(tagSlice) < 2 || tagSlice[0] != "e" {
@@ -270,7 +274,7 @@ func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, clu
 			}
 			if !containsMessage(*allUniqueThreadMessages, msg.ID) {
 				messageIDsToQuery = append(messageIDsToQuery, msg.ID)
-				*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg) // Add to global slice if not already present
+				*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg)
 			}
 		}
 		if err := results.Err(); err != nil {
@@ -280,7 +284,7 @@ func messageFetcher(messageIDs []string, allUniqueThreadMessages *[]Message, clu
 
 	// Recursively fetch messages for newly discovered IDs if there are any
 	if len(messageIDsToQuery) > 0 {
-		return messageFetcher(messageIDsToQuery, allUniqueThreadMessages, cluster)
+		return messageFetcher(ctx, messageIDsToQuery, allUniqueThreadMessages, cluster)
 	}
 
 	return nil
