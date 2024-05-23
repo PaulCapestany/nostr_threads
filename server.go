@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"sort"
@@ -52,6 +53,9 @@ func init() {
 	log.SetOutput(os.Stdout)
 	// Set log flags for more detailed output
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 }
 
 func main() {
