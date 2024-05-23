@@ -120,26 +120,30 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 	log.Printf("Received payload: %+v\n", payload)
 
+	// Fetch messages and construct the thread
 	messageIDsToQuery := []string{payload.ID}
 	var allUniqueThreadMessages []Message
-
 	messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, cluster)
 
+	// Sort messages by creation time
 	sort.Slice(allUniqueThreadMessages, func(i, j int) bool {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
+	// Process message threading
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Concatenate all messages' content
 	var allMessagesContent string
 	for _, msg := range threadedProcessedMessages {
 		allMessagesContent += fmt.Sprintf("%s\n\n", msg.Content)
 	}
 
+	// Create a new thread
 	newThread := Thread{
 		CreatedAt:            threadedProcessedMessages[0].CreatedAt,
 		ID:                   threadedProcessedMessages[0].ID,
@@ -150,9 +154,11 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		XEmbeddings:          0,
 	}
 
-	bucket := cluster.Bucket("all_nostr_events")
+	// Use the "threads" bucket instead of "all_nostr_events"
+	bucket := cluster.Bucket("threads")
 	collection := bucket.DefaultCollection()
 
+	// Upsert the thread into Couchbase
 	_, err = collection.Upsert(newThread.ID, newThread, nil)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)

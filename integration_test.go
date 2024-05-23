@@ -1,11 +1,7 @@
 package main
 
 import (
-	"bytes"
-	"encoding/json"
 	"log"
-	"net/http"
-	"net/http/httptest"
 	"os"
 	"testing"
 	"time"
@@ -43,21 +39,14 @@ func setupTestCluster() (*gocb.Cluster, error) {
 	return cluster, nil
 }
 
-func setupTestBucket(cluster *gocb.Cluster) (*gocb.Bucket, error) {
-	bucket := cluster.Bucket("all_nostr_events")
+func setupTestBucket(cluster *gocb.Cluster, bucketName string) (*gocb.Bucket, error) {
+	bucket := cluster.Bucket(bucketName)
 	return bucket, nil
-}
-
-func cleanupTestData(bucket *gocb.Bucket, docIDs []string) {
-	collection := bucket.DefaultCollection()
-	for _, id := range docIDs {
-		collection.Remove(id, nil)
-	}
 }
 
 func TestUpdateThreadHandler_NewThread(t *testing.T) {
 	// Setup
-	bucket, err := setupTestBucket(testCluster)
+	bucket, err := setupTestBucket(testCluster, "all_nostr_events")
 	if err != nil {
 		t.Fatalf("Failed to setup test bucket: %v", err)
 	}
@@ -72,42 +61,25 @@ func TestUpdateThreadHandler_NewThread(t *testing.T) {
 		Tags:      []interface{}{},
 	}
 
-	payload := struct {
-		ID      string  `json:"id"`
-		Message Message `json:"message"`
-	}{
-		ID:      message.ID,
-		Message: message,
-	}
-
-	body, err := json.Marshal(payload)
+	collection := bucket.DefaultCollection()
+	_, err = collection.Upsert(message.ID, message, nil)
 	if err != nil {
-		t.Fatalf("Failed to marshal payload: %v", err)
+		t.Fatalf("Failed to insert test message into bucket: %v", err)
 	}
 
-	req, err := http.NewRequest("POST", "/nostr/update_thread", bytes.NewBuffer(body))
-	if err != nil {
-		t.Fatalf("Failed to create request: %v", err)
-	}
-
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		UpdateThreadHandler(w, r, testCluster)
-	})
-
-	// Test
-	handler.ServeHTTP(rr, req)
-
-	// Verify
-	if status := rr.Code; status != http.StatusOK {
-		t.Fatalf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
-	}
+	// Wait for the Eventing function to process the message
+	time.Sleep(5 * time.Second)
 
 	// Verify the new thread in Couchbase
-	collection := bucket.DefaultCollection()
-	getResult, err := collection.Get(message.ID, nil)
+	threadsBucket, err := setupTestBucket(testCluster, "threads")
 	if err != nil {
-		t.Fatalf("Failed to get thread from bucket: %v", err)
+		t.Fatalf("Failed to setup threads bucket: %v", err)
+	}
+	threadsCollection := threadsBucket.DefaultCollection()
+
+	getResult, err := threadsCollection.Get(message.ID, nil)
+	if err != nil {
+		t.Fatalf("Failed to get thread from threads bucket: %v", err)
 	}
 
 	var thread Thread
@@ -122,11 +94,12 @@ func TestUpdateThreadHandler_NewThread(t *testing.T) {
 
 	// Cleanup
 	cleanupTestData(bucket, []string{message.ID})
+	cleanupTestData(threadsBucket, []string{message.ID})
 }
 
 func TestUpdateThreadHandler_ExistingThread(t *testing.T) {
 	// Setup
-	bucket, err := setupTestBucket(testCluster)
+	bucket, err := setupTestBucket(testCluster, "all_nostr_events")
 	if err != nil {
 		t.Fatalf("Failed to setup test bucket: %v", err)
 	}
@@ -141,18 +114,10 @@ func TestUpdateThreadHandler_ExistingThread(t *testing.T) {
 		Tags:      []interface{}{},
 	}
 
-	thread := Thread{
-		CreatedAt: parentMessage.CreatedAt,
-		ID:        parentMessage.ID,
-		Kind:      parentMessage.Kind,
-		Pubkey:    parentMessage.Pubkey,
-		Messages:  []Message{parentMessage},
-	}
-
 	collection := bucket.DefaultCollection()
-	_, err = collection.Upsert(parentMessage.ID, thread, nil)
+	_, err = collection.Upsert(parentMessage.ID, parentMessage, nil)
 	if err != nil {
-		t.Fatalf("Failed to insert parent thread into bucket: %v", err)
+		t.Fatalf("Failed to insert parent message into bucket: %v", err)
 	}
 
 	childMessage := Message{
@@ -162,45 +127,29 @@ func TestUpdateThreadHandler_ExistingThread(t *testing.T) {
 		Kind:      1,
 		Pubkey:    "pubkey_child",
 		Sig:       "signature_child",
-		Tags:      []interface{}{},
-		ParentID:  parentMessage.ID,
+		Tags: []interface{}{
+			[]interface{}{"e", parentMessage.ID},
+		},
 	}
 
-	payload := struct {
-		ID      string  `json:"id"`
-		Message Message `json:"message"`
-	}{
-		ID:      childMessage.ID,
-		Message: childMessage,
-	}
-
-	body, err := json.Marshal(payload)
+	_, err = collection.Upsert(childMessage.ID, childMessage, nil)
 	if err != nil {
-		t.Fatalf("Failed to marshal payload: %v", err)
+		t.Fatalf("Failed to insert child message into bucket: %v", err)
 	}
 
-	req, err := http.NewRequest("POST", "/nostr/update_thread", bytes.NewBuffer(body))
-	if err != nil {
-		t.Fatalf("Failed to create request: %v", err)
-	}
-
-	rr := httptest.NewRecorder()
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		UpdateThreadHandler(w, r, testCluster)
-	})
-
-	// Test
-	handler.ServeHTTP(rr, req)
-
-	// Verify
-	if status := rr.Code; status != http.StatusOK {
-		t.Fatalf("Handler returned wrong status code: got %v want %v", status, http.StatusOK)
-	}
+	// Wait for the Eventing function to process the messages
+	time.Sleep(5 * time.Second)
 
 	// Verify the updated thread in Couchbase
-	getResult, err := collection.Get(parentMessage.ID, nil)
+	threadsBucket, err := setupTestBucket(testCluster, "threads")
 	if err != nil {
-		t.Fatalf("Failed to get parent thread from bucket: %v", err)
+		t.Fatalf("Failed to setup threads bucket: %v", err)
+	}
+	threadsCollection := threadsBucket.DefaultCollection()
+
+	getResult, err := threadsCollection.Get(parentMessage.ID, nil)
+	if err != nil {
+		t.Fatalf("Failed to get thread from threads bucket: %v", err)
 	}
 
 	var updatedThread Thread
@@ -215,4 +164,12 @@ func TestUpdateThreadHandler_ExistingThread(t *testing.T) {
 
 	// Cleanup
 	cleanupTestData(bucket, []string{parentMessage.ID, childMessage.ID})
+	cleanupTestData(threadsBucket, []string{parentMessage.ID})
+}
+
+func cleanupTestData(bucket *gocb.Bucket, docIDs []string) {
+	collection := bucket.DefaultCollection()
+	for _, id := range docIDs {
+		collection.Remove(id, nil)
+	}
 }
