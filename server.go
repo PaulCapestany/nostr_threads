@@ -256,6 +256,7 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 		} else {
 			log.Printf("Success executing query for ID: %s", id)
 			alreadyQueriedIDs[id] = true
+			// TODO: need to figure out how to handle the case where the query is successful but the actual message being referenced is not found via "USE KEYS"
 		}
 
 		// found := false
