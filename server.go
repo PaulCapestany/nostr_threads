@@ -117,13 +117,13 @@ func main() {
 	wg.Wait()
 }
 
-func retryOperation(operation func() error, retries int) error {
+func retryOperation(operation func() error, retries int, messageIDsToQuery []string) error {
 	for i := 0; i < retries; i++ {
 		err := operation()
 		if err == nil {
 			return nil
 		}
-		log.Printf("Retry %d/%d failed: %v", i+1, retries, err)
+		log.Printf("Retry %d/%d failed: %v messageIDsToQuery:%v", i+1, retries, err, messageIDsToQuery)
 		time.Sleep(2 * time.Second) // Exponential backoff can be implemented here
 	}
 	return fmt.Errorf("operation failed after %d retries", retries)
@@ -144,18 +144,20 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		return
 	}
 
-	log.Printf("Received payload: %+v\n", payload)
+	log.Printf("Received payload with ID: %+v\n", payload.ID)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
 
 	// Fetch messages and construct the thread
 	messageIDsToQuery := []string{payload.ID}
 	var allUniqueThreadMessages []Message
-	log.Println("Calling messageFetcher")
+	log.Println("Calling messageFetcher with messageIDsToQuery: ", messageIDsToQuery)
 	err = retryOperation(func() error {
-		return messageFetcher(messageIDsToQuery, &allUniqueThreadMessages, cluster)
-	}, 3)
+		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster)
+	}, 3, messageIDsToQuery)
 
 	if err != nil {
-		log.Printf("Failed to fetch messages: %v", err)
+		log.Printf("Failed to fetch messages: %v messageIDsToQuery: %v", err, messageIDsToQuery)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -169,7 +171,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	log.Println("Calling processMessageThreading")
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
-		log.Printf("Failed to process message threading: %v", err)
+		log.Printf("Failed to process message threading: %v messageIDsToQuery: %v", err, messageIDsToQuery)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -191,21 +193,25 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		XEmbeddings:          0,
 	}
 
-	log.Printf("New thread created: %+v\n", newThread)
+	if newThread.ID == messageIDsToQuery[0] {
+		log.Printf("Completely new thread created with ID: %v\n", newThread.ID)
+	} else {
+		log.Printf("Updated thread with ID: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
+	}
 
 	// Use the "threads" bucket instead of "all_nostr_events"
 	bucket := cluster.Bucket("threads")
 	collection := bucket.DefaultCollection()
 
 	// Upsert the thread into Couchbase
-	log.Printf("Upserting thread into Couchbase: %s\n", newThread.ID)
+	log.Printf("Upserting thread into Couchbase: %s messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
 	err = retryOperation(func() error {
 		_, err = collection.Upsert(newThread.ID, newThread, nil)
 		return err
-	}, 3)
+	}, 3, messageIDsToQuery)
 
 	if err != nil {
-		log.Printf("Failed to upsert thread: %v", err)
+		log.Printf("Failed to upsert thread: %v messageIDsToQuery: %v", err, messageIDsToQuery)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -242,6 +248,8 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 		if err != nil {
 			log.Printf("Failed to execute query for ID %s: %v", id, err)
 			continue
+		} else {
+			log.Printf("Success executing query for ID: %s", id)
 		}
 
 		for results.Next() {
