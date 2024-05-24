@@ -353,6 +353,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 			if originalMessage == nil || mentions > maxMentions {
 				originalMessage = &allUniqueThreadMessages[i]
 				maxMentions = mentions
+				log.Printf("Warning: potential error/fail? (mentions > maxMentions) \"originalMessage.ID\": %v", originalMessage.ID)
 			} else if mentions == maxMentions {
 				return nil, errors.New("multiple original messages found with the same number of mentions")
 			}
@@ -360,6 +361,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 	}
 
 	if originalMessage == nil {
+		log.Printf("original message not found, allUniqueThreadMessages: %v", allUniqueThreadMessages)
 		return nil, errors.New("original message not found")
 		// TODO: grab message from another relay?
 	}
