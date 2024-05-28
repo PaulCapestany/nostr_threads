@@ -153,8 +153,9 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	var allUniqueThreadMessages []Message
 	log.Println("Calling messageFetcher with messageIDsToQuery: ", messageIDsToQuery)
 	alreadyQueriedIDs := make(map[string]bool)
+	foundMessageIDs := make(map[string]bool)
 	err = retryOperation(func() error {
-		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs)
+		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs)
 	}, 3, messageIDsToQuery)
 
 	if err != nil {
@@ -221,7 +222,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	log.Println("UpdateThreadHandler completed successfully")
 }
 
-func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster, alreadyQueriedIDs map[string]bool) error {
+func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster, alreadyQueriedIDs map[string]bool, foundMessageIDs map[string]bool) error {
 	if cluster == nil {
 		log.Println("Cluster connection is not initialized.")
 		return fmt.Errorf("cluster connection is not initialized")
@@ -256,10 +257,8 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 		} else {
 			log.Printf("Success executing query for ID: %s", id)
 			alreadyQueriedIDs[id] = true
-			// TODO: need to figure out how to handle the case where the query is successful but the actual message being referenced is not found via "USE KEYS" (grab message from another relay?)
 		}
 
-		// found := false
 		for results.Next() {
 			select {
 			case <-ctx.Done():
@@ -291,21 +290,17 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 			if !containsMessage(*allUniqueThreadMessages, msg.ID) {
 				messageIDsToQuery = append(messageIDsToQuery, msg.ID)
 				*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg)
+				foundMessageIDs[msg.ID] = true
 			}
-			// found = true
 		}
 		if err := results.Err(); err != nil {
 			log.Printf("Error iterating results: %v", err)
 		}
-
-		// if !found {
-		// 	alreadyQueriedIDs[id] = true // Mark ID as missing if not found in query results
-		// }
 	}
 
 	// Recursively fetch messages for newly discovered IDs if there are any
 	if len(messageIDsToQuery) > 0 {
-		return messageFetcher(ctx, messageIDsToQuery, allUniqueThreadMessages, cluster, alreadyQueriedIDs)
+		return messageFetcher(ctx, messageIDsToQuery, allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs)
 	}
 
 	return nil
