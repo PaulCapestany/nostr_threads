@@ -301,6 +301,8 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 			if !containsMessage(*allUniqueThreadMessages, msg.ID) {
 				messageIDsToQuery = append(messageIDsToQuery, msg.ID)
 				*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg)
+				foundMessageIDs[msg.ID] = false
+			} else {
 				foundMessageIDs[msg.ID] = true
 			}
 		}
@@ -313,7 +315,8 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 	if len(messageIDsToQuery) > 0 {
 		return messageFetcher(ctx, messageIDsToQuery, allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs)
 	}
-
+	log.Printf("alreadyQueriedIDs: %v", alreadyQueriedIDs)
+	log.Printf("foundMessageIDs: %v", foundMessageIDs)
 	return nil
 }
 
