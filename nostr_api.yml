@@ -33,6 +33,23 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/RelayInformation'
+  /threads:
+    get:
+      summary: Fetch a flattened discussion thread
+      parameters:
+        - name: thread_id
+          in: query
+          required: true
+          schema:
+            type: string
+            description: ID of the root event of the thread
+      responses:
+        '200':
+          description: Flattened discussion thread
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Thread'
 components:
   schemas:
     Event:
@@ -88,6 +105,17 @@ components:
           type: array
           items:
             type: string
+    Thread:
+      type: object
+      properties:
+        thread_id:
+          type: string
+          description: ID of the root event of the thread
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+          description: Array of events in the thread
     FollowListEvent:
       type: object
       properties:
