@@ -218,7 +218,18 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		return
 	}
 
+	// Log the JSON response
+	responseJSON, err := json.Marshal(newThread)
+	if err != nil {
+		log.Printf("Failed to marshal response JSON: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("JSON response: %s", string(responseJSON))
+
 	w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	w.Write(responseJSON)
 	log.Println("UpdateThreadHandler completed successfully")
 }
 
