@@ -49,7 +49,7 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Thread'
+                $ref: '#/components/schemas/Thread'             
 components:
   schemas:
     Event:
@@ -80,6 +80,12 @@ components:
         sig:
           type: string
           description: 64-byte hex-encoded signature
+        parent_id:
+          type: string
+          description: The ID of the parent event if this is a reply.
+        depth:
+          type: integer
+          description: The nesting level of the event within a thread.          
     RelayInformation:
       type: object
       properties:
@@ -369,3 +375,61 @@ components:
         content:
           type: string
           description: Optional detailed description
+  responses:
+    EventResponse:
+      description: A single event.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Event'
+    ThreadResponse:
+      description: A list of events forming a thread.
+      content:
+        application/json:
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/Event'
+  examples:
+    EventExample:
+      summary: Example of an event
+      value:
+        id: "message1"
+        pubkey: "pubkey1"
+        created_at: 1627384800
+        kind: 1
+        tags: []
+        content: "This is the root message"
+        sig: "signature1"
+        parent_id: null
+        depth: 0
+    ThreadExample:
+      summary: Example of a flattened thread
+      value:
+        - id: "message1"
+          pubkey: "pubkey1"
+          created_at: 1627384800
+          kind: 1
+          tags: []
+          content: "This is the root message"
+          sig: "signature1"
+          parent_id: null
+          depth: 0
+        - id: "message2"
+          pubkey: "pubkey2"
+          created_at: 1627388400
+          kind: 1
+          tags: []
+          content: "This is a reply to the root message"
+          sig: "signature2"
+          parent_id: "message1"
+          depth: 1
+        - id: "message3"
+          pubkey: "pubkey3"
+          created_at: 1627392000
+          kind: 1
+          tags: []
+          content: "This is a reply to the first reply"
+          sig: "signature3"
+          parent_id: "message2"
+          depth: 2
