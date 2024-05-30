@@ -116,6 +116,15 @@ components:
           items:
             $ref: '#/components/schemas/Event'
           description: Array of events in the thread
+        total_events:
+          type: integer
+          description: Total number of events in the thread
+        concatenated_content:
+          type: string
+          description: Concatenated content of all events in the thread   
+        created_at:
+          type: integer
+          description: Unix timestamp (seconds)                        
     FollowListEvent:
       type: object
       properties:
