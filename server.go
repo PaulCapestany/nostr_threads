@@ -241,7 +241,11 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 		return fmt.Errorf("cluster connection is not initialized")
 	}
 
-	var messageIDsToQuery []string
+	messageIDsToQuery := make([]string, 0)
+	messageMap := make(map[string]Message)
+	for _, msg := range *allUniqueThreadMessages {
+		messageMap[msg.ID] = msg
+	}
 
 	for _, id := range messageIDs {
 		if alreadyQueriedIDs[id] {
@@ -296,16 +300,14 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 				if !ok || len(tagSlice) < 2 || tagSlice[0] != "e" {
 					continue
 				}
-				if idStr, ok := tagSlice[1].(string); ok && !containsMessage(*allUniqueThreadMessages, idStr) && !contains(messageIDsToQuery, idStr) {
+				if idStr, ok := tagSlice[1].(string); ok && !contains(foundMessageIDs, idStr) && !contains(alreadyQueriedIDs, idStr) {
 					messageIDsToQuery = append(messageIDsToQuery, idStr)
 				}
 			}
-			if !containsMessage(*allUniqueThreadMessages, msg.ID) {
+			if !containsMessage(foundMessageIDs, msg.ID) {
 				messageIDsToQuery = append(messageIDsToQuery, msg.ID)
 				*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg)
 				foundMessageIDs[msg.ID] = true
-			} else {
-				foundMessageIDs[msg.ID] = false
 			}
 		}
 		if err := results.Err(); err != nil {
@@ -322,22 +324,14 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 	return nil
 }
 
-func containsMessage(messages []Message, id string) bool {
-	for _, msg := range messages {
-		if msg.ID == id {
-			return true
-		}
-	}
-	return false
+func containsMessage(messages map[string]bool, id string) bool {
+	_, exists := messages[id]
+	return exists
 }
 
-func contains(ids []string, id string) bool {
-	for _, existingID := range ids {
-		if existingID == id {
-			return true
-		}
-	}
-	return false
+func contains(ids map[string]bool, id string) bool {
+	_, exists := ids[id]
+	return exists
 }
 
 func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, error) {
