@@ -19,6 +19,9 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// nostr_threads flow
+// gets an arbitrary message ID, first checks if it's already in the all_nostr_events bucket, if not, uses nak to fetch it
+
 // Message represents a Nostr message structure
 type Message struct {
 	Content   interface{}   `json:"content"`
@@ -225,7 +228,6 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("JSON response: %s", string(responseJSON))
 
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
@@ -301,9 +303,9 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 			if !containsMessage(*allUniqueThreadMessages, msg.ID) {
 				messageIDsToQuery = append(messageIDsToQuery, msg.ID)
 				*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg)
-				foundMessageIDs[msg.ID] = false
-			} else {
 				foundMessageIDs[msg.ID] = true
+			} else {
+				foundMessageIDs[msg.ID] = false
 			}
 		}
 		if err := results.Err(); err != nil {
