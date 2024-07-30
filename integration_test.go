@@ -31,7 +31,7 @@ func TestMain(m *testing.M) {
 func setupTestCluster() (*gocb.Cluster, error) {
 	cluster, err := gocb.Connect("couchbase://localhost", gocb.ClusterOptions{
 		Username: "admin",
-		Password: "hangman8june4magician9traverse8disbar4majolica4bacilli",
+		Password: "ore8airman7goods6feudal8mantle",
 	})
 	if err != nil {
 		return nil, err
