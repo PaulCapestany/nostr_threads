@@ -64,7 +64,7 @@ func init() {
 func main() {
 	// Initialize Couchbase connection
 	var err error
-	cluster, err = gocb.Connect("couchbase://localhost", gocb.ClusterOptions{
+	cluster, err = gocb.Connect("couchbase://couchbase-cluster.default.svc.cluster.local", gocb.ClusterOptions{
 		Username: "admin",
 		Password: "ore8airman7goods6feudal8mantle",
 	})

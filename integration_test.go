@@ -29,7 +29,7 @@ func TestMain(m *testing.M) {
 }
 
 func setupTestCluster() (*gocb.Cluster, error) {
-	cluster, err := gocb.Connect("couchbase://localhost", gocb.ClusterOptions{
+	cluster, err := gocb.Connect("couchbase://couchbase-cluster.default.svc.cluster.local", gocb.ClusterOptions{
 		Username: "admin",
 		Password: "ore8airman7goods6feudal8mantle",
 	})
