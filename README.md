@@ -59,7 +59,7 @@ The primary goals of the `nostr_threads` project are:
 - [ ] **Thread Management**:
   - [x] Define and implement a flattened JSON structure for threads.
   - [x] Set up a Couchbase Eventing function to detect new messages ([nostr_threads_eventing_function.json](nostr_threads_eventing_function.json)).
-  - [ ] Insert freshly generated/updated threads into Couchbase (**not** into *all_nostr_events* bucket, rather, into our *threads* bucket).
+  - [ ] Insert freshly generated/updated threads into Couchbase (**not** into *all-nostr-events* bucket, rather, into our *threads* bucket).
   - [ ] Improve thread management algorithms to handle complex threading scenarios.
   - [ ] Implement unit tests for all thread management functionality.
   - [x] Determine the best method for updating threads as new Nostr messages come in.
@@ -86,9 +86,9 @@ The primary goals of the `nostr_threads` project are:
 - [gocb v2.8.1](https://github.com/couchbase/gocb)
 - [Nostr protocol specification](https://github.com/nostr-protocol/nips)
 - Ensure a *threads* Couchbase bucket exists
-- Ensure the following Couchbase index exists in the *all_nostr_events* bucket:
+- Ensure the following Couchbase index exists in the *all-nostr-events* bucket:
 ```sql
-CREATE INDEX kind_and_event_lookup ON `default`:`all_nostr_events`.`_default`.`_default`(`kind`,(distinct (array (`t`[1]) for `t` in `tags` when ((`t`[0]) = "e") end)))
+CREATE INDEX kind_and_event_lookup ON `default`:`all-nostr-events`.`_default`.`_default`(`kind`,(distinct (array (`t`[1]) for `t` in `tags` when ((`t`[0]) = "e") end)))
 ```
 
 ### Installation

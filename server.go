@@ -20,7 +20,7 @@ import (
 )
 
 // nostr_threads flow
-// gets an arbitrary message ID, first checks if it's already in the all_nostr_events bucket, if not, uses nak to fetch it
+// gets an arbitrary message ID, first checks if it's already in the all-nostr-events bucket, if not, uses nak to fetch it
 
 // Message represents a Nostr message structure
 type Message struct {
@@ -204,7 +204,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		log.Printf("Updated thread with ID: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
 	}
 
-	// Use the "threads" bucket instead of "all_nostr_events"
+	// Use the "threads" bucket instead of "all-nostr-events"
 	bucket := cluster.Bucket("threads")
 	collection := bucket.DefaultCollection()
 
@@ -254,13 +254,13 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 
 		query := fmt.Sprintf(`WITH referencedMessages AS (
             SELECT d.*
-            FROM `+"`all_nostr_events`._default._default"+` AS d
+            FROM `+"`all-nostr-events`._default._default"+` AS d
             USE KEYS "%s"
 
             UNION
 
             SELECT refMessage.*
-            FROM `+"`all_nostr_events`._default._default"+` AS refMessage
+            FROM `+"`all-nostr-events`._default._default"+` AS refMessage
             USE INDEX (kind_and_event_lookup USING GSI)
             WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "%s" END)
         )

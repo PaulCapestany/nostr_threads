@@ -48,7 +48,7 @@ func TestUpdateThreadHandler_NewThread(t *testing.T) {
 	log.Println("Starting TestUpdateThreadHandler_NewThread")
 
 	// Setup
-	bucket, err := setupTestBucket(testCluster, "all_nostr_events")
+	bucket, err := setupTestBucket(testCluster, "all-nostr-events")
 	if err != nil {
 		t.Fatalf("Failed to setup test bucket: %v", err)
 	}
@@ -105,7 +105,7 @@ func TestUpdateThreadHandler_ExistingThread(t *testing.T) {
 	log.Println("Starting TestUpdateThreadHandler_ExistingThread")
 
 	// Setup
-	bucket, err := setupTestBucket(testCluster, "all_nostr_events")
+	bucket, err := setupTestBucket(testCluster, "all-nostr-events")
 	if err != nil {
 		t.Fatalf("Failed to setup test bucket: %v", err)
 	}
