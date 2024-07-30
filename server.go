@@ -57,6 +57,7 @@ func init() {
 	// Set log flags for more detailed output
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	go func() {
+		// this was for pprof profiling
 		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
 	}()
 }
