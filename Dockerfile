@@ -8,6 +8,13 @@ WORKDIR /app
 # Copy the `nostr_threads` source files into the container
 COPY . ./nostr_threads
 
+# Clone the `nak` repository
+RUN git clone https://github.com/fiatjaf/nak.git
+
+# Build the `nak` binary
+WORKDIR /app/nak
+RUN go mod tidy && go build -o /app/bin/nak .
+
 # Build the `nostr_threads` binary
 WORKDIR /app/nostr_threads
 RUN go mod tidy && go build -o /app/bin/nostr_threads .
@@ -20,6 +27,7 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 
 # Copy the built binaries from the builder stage
 COPY --from=builder /app/bin/nostr_threads /usr/local/bin/nostr_threads
+COPY --from=builder /app/bin/nak /usr/local/bin/nak
 # COPY ./conf.json /app/conf.json
 
 # Expose any necessary ports (if needed)
