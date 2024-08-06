@@ -28,7 +28,6 @@ RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/
 # Copy the built binaries from the builder stage
 COPY --from=builder /app/bin/nostr_threads /usr/local/bin/nostr_threads
 COPY --from=builder /app/bin/nak /usr/local/bin/nak
-# COPY ./conf.json /app/conf.json
 
 # Expose any necessary ports (if needed)
 EXPOSE 8081
