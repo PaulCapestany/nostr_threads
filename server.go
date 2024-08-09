@@ -141,10 +141,12 @@ var ollamaClient = resty.New()
 func getThreadEmbedding(content string) ([]float32, error) {
 	url := "http://ollama.ollama.svc.cluster.local/api/embed" // Replace with your Ollama server's address
 
+	fullPrompt := "clustering: " + content
+
 	// Create the payload
 	payload := map[string]interface{}{
-		"model":      "bge-m3",
-		"input":      content,
+		"model":      "nomic-embed-text",
+		"input":      fullPrompt,
 		"keep_alive": -1,
 	}
 
