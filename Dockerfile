@@ -1,37 +1,47 @@
-# Use an official Golang runtime as a parent image
-FROM golang:1.22.5 as builder
+# syntax=docker/dockerfile:1.2
+
+# Use a smaller base image for the builder stage
+FROM golang:1.22.5-alpine AS builder
+
+# Install git, as it's needed for cloning the nak repository
+RUN apk add --no-cache git
 
 # Set the working directory inside the container
 WORKDIR /app
 
+# Copy only go.mod and go.sum to leverage caching of dependencies
+COPY go.mod go.sum ./nostr_threads/
 
-# Copy the `nostr_threads` source files into the container
+# Use a build cache for Go modules
+RUN --mount=type=cache,target=/go/pkg/mod cd nostr_threads && go mod download
+
+# Clone the `nak` repository and download dependencies
+RUN git clone https://github.com/fiatjaf/nak.git && cd nak && go mod download
+
+# Copy the entire source code for `nostr_threads`
 COPY . ./nostr_threads
-
-# Clone the `nak` repository
-RUN git clone https://github.com/fiatjaf/nak.git
 
 # Build the `nak` binary
 WORKDIR /app/nak
-RUN go mod tidy && go build -o /app/bin/nak .
+RUN --mount=type=cache,target=/root/.cache/go-build go build -trimpath -ldflags '-s -w' -o /app/bin/nak .
 
 # Build the `nostr_threads` binary
 WORKDIR /app/nostr_threads
-RUN go mod tidy && go build -o /app/bin/nostr_threads .
+RUN --mount=type=cache,target=/root/.cache/go-build go build -trimpath -ldflags '-s -w' -o /app/bin/nostr_threads .
 
-# Use a smaller base image for the final stage
-FROM debian:latest
+# Use a Distroless base image for the final stage
+FROM gcr.io/distroless/base
 
-# Install necessary certificates
-RUN apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
+# Set the working directory in the final image
+WORKDIR /app
 
 # Copy the built binaries from the builder stage
 COPY --from=builder /app/bin/nostr_threads /usr/local/bin/nostr_threads
 COPY --from=builder /app/bin/nak /usr/local/bin/nak
 
-# Expose any necessary ports (if needed)
+# Expose necessary ports
 EXPOSE 8081
 EXPOSE 6060
 
-# Command to run both `nak` and `nostr_threads`
-CMD ["sh", "-c", "nostr_threads"]
+# Command to run the `nostr_threads` binary
+CMD ["nostr_threads"]
