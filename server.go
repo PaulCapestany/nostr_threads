@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/signal"
 	"sort"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -145,7 +146,7 @@ func getThreadEmbedding(content string) ([]float32, error) {
 
 	// Create the payload
 	payload := map[string]interface{}{
-		"model":      "nomic-embed-text",
+		"model":      "bge-m3",
 		"input":      fullPrompt,
 		"keep_alive": -1,
 	}
@@ -180,6 +181,15 @@ func getThreadEmbedding(content string) ([]float32, error) {
 	}
 
 	return result.Embeddings[0], nil
+}
+
+// SanitizeContent cleans up the content by removing or replacing unwanted characters
+func SanitizeContent(content string) string {
+	// Reduce multiple spaces to a single space
+	sanitized := ""
+	sanitized = strings.Join(strings.Fields(sanitized), " ")
+
+	return sanitized
 }
 
 // Modify UpdateThreadHandler to include embedding functionality
@@ -235,7 +245,9 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	// Concatenate all messages' content
 	var allMessagesContent string
 	for _, msg := range threadedProcessedMessages {
-		allMessagesContent += fmt.Sprintf("%s\n\n", msg.Content)
+		// Sanitize the content of each message before concatenation
+		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
+		allMessagesContent += fmt.Sprintf("%s … ", sanitizedContent)
 	}
 
 	// Get the embedding for the concatenated thread content
