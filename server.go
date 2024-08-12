@@ -187,7 +187,7 @@ func getThreadEmbedding(content string) ([]float32, error) {
 func SanitizeContent(content string) string {
 	// Reduce multiple spaces to a single space
 	sanitized := ""
-	sanitized = strings.Join(strings.Fields(sanitized), " ")
+	sanitized = strings.Join(strings.Fields(content), " ")
 
 	return sanitized
 }
