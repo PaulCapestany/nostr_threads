@@ -136,13 +136,16 @@ func retryOperation(operation func() error, retries int, messageIDsToQuery []str
 }
 
 // Ollama API Client
-var ollamaClient = resty.New()
+var ollamaClient = resty.New().
+	SetRetryCount(3).
+	SetRetryWaitTime(3 * time.Second).
+	SetRetryMaxWaitTime(10 * time.Second)
 
 // Function to get embedding from Ollama API
 func getThreadEmbedding(content string) ([]float32, error) {
 	url := "http://ollama.ollama.svc.cluster.local/api/embed" // Replace with your Ollama server's address
 
-	fullPrompt := "clustering: " + content
+	fullPrompt := "" + content
 
 	// Create the payload
 	payload := map[string]interface{}{
@@ -192,6 +195,7 @@ func SanitizeContent(content string) string {
 	return sanitized
 }
 
+// TODO: UpdateThreadHandler needs to work concurrently with multiple threads
 // Modify UpdateThreadHandler to include embedding functionality
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
 	log.Println("UpdateThreadHandler called")
@@ -247,16 +251,19 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	for _, msg := range threadedProcessedMessages {
 		// Sanitize the content of each message before concatenation
 		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-		allMessagesContent += fmt.Sprintf("%s … ", sanitizedContent)
+		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
 	}
 
-	// Get the embedding for the concatenated thread content
-	embedding, err := getThreadEmbedding(allMessagesContent)
-	if err != nil {
-		log.Printf("Failed to generate embedding: %v", err)
-		http.Error(w, "Embedding generation failed", http.StatusInternalServerError)
-		return
-	}
+	embedding := make([]float32, 0)
+
+	// TODO: embedding needs to not affect the thread creation
+	// // Get the embedding for the concatenated thread content
+	// embedding, err := getThreadEmbedding(allMessagesContent)
+	// if err != nil {
+	// 	log.Printf("Failed to generate embedding: %v", err)
+	// 	http.Error(w, "Embedding generation failed", http.StatusInternalServerError)
+	// 	return
+	// }
 
 	// Create a new thread
 	newThread := Thread{
