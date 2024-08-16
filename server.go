@@ -200,7 +200,7 @@ func SanitizeContent(content string) string {
 // TODO: UpdateThreadHandler needs to work concurrently with multiple threads
 // Modify UpdateThreadHandler to include embedding functionality
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
-	log.Println("UpdateThreadHandler called")
+	// log.Println("UpdateThreadHandler called")
 
 	var payload struct {
 		ID      string  `json:"id"`
@@ -234,13 +234,13 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		return
 	}
 
-	log.Println("Sorting messages by creation time")
+	// log.Println("Sorting messages by creation time")
 	sort.Slice(allUniqueThreadMessages, func(i, j int) bool {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
 	// Process message threading
-	log.Println("Calling processMessageThreading")
+	// log.Println("Calling processMessageThreading")
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
 		log.Printf("Failed to process message threading: %v messageIDsToQuery: %v", err, messageIDsToQuery)
@@ -291,9 +291,10 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	}
 
 	if newThread.ID == messageIDsToQuery[0] {
-		log.Printf("Completely new thread created with ID: %v\n", newThread.ID)
+		log.Printf("SUCCESS: new thread: %v", newThread.ID)
 	} else {
-		log.Printf("Updated thread with ID: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
+		// log.Printf("SUCCESS: updated thread: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
+		log.Printf("SUCCESS: updated thread: %v", newThread.ID)
 	}
 
 	// Use the "threads" bucket instead of "all-nostr-events"
@@ -301,7 +302,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	collection := bucket.DefaultCollection()
 
 	// Upsert the thread into Couchbase
-	log.Printf("Upserting thread into Couchbase: %s messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
+	// log.Printf("Upserting thread into Couchbase: %s messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
 	err = retryOperation(func() error {
 		_, err = collection.Upsert(newThread.ID, newThread, nil)
 		return err
@@ -324,7 +325,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(responseJSON)
-	log.Println("UpdateThreadHandler completed successfully")
+	// log.Println("UpdateThreadHandler completed successfully")
 }
 
 func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster, alreadyQueriedIDs map[string]bool, foundMessageIDs map[string]bool) error {
@@ -411,7 +412,7 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 	if len(messageIDsToQuery) > 0 {
 		return messageFetcher(ctx, messageIDsToQuery, allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs)
 	}
-	log.Printf("alreadyQueriedIDs: %v", alreadyQueriedIDs)
+	// log.Printf("alreadyQueriedIDs: %v", alreadyQueriedIDs)
 	log.Printf("foundMessageIDs: %v", foundMessageIDs)
 	return nil
 }
