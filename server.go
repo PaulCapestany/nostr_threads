@@ -41,8 +41,10 @@ type Message struct {
 // Thread represents a flattened Nostr thread structure
 type Thread struct {
 	// NOTE: a thread's CreatedAt, ID, Kind, and Pubkey are the same as the first message in the thread (the root Nostr message)
-	CreatedAt int64     `json:"created_at"`
 	ID        string    `json:"id"`
+	CreatedAt int64     `json:"created_at"`  // TODO: must implement in code
+	LastMsgAt int64     `json:"last_msg_at"` // TODO: must implement in code
+	MsgCount  int       `json:"msg_count"`
 	Kind      int       `json:"kind"`
 	Pubkey    string    `json:"pubkey"`
 	Messages  []Message `json:"messages"`
@@ -254,6 +256,16 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
 	}
 
+	// Find the most recent message in the thread to set LastMsgAt
+	var lastMsgAt int64
+	for _, msg := range threadedProcessedMessages {
+		if msg.CreatedAt > lastMsgAt {
+			lastMsgAt = msg.CreatedAt
+		}
+	}
+
+	msgCount := len(threadedProcessedMessages)
+
 	embedding := make([]float32, 0)
 
 	// TODO: embedding needs to not affect the thread creation
@@ -268,6 +280,8 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	// Create a new thread
 	newThread := Thread{
 		CreatedAt:            threadedProcessedMessages[0].CreatedAt,
+		LastMsgAt:            lastMsgAt,
+		MsgCount:             msgCount,
 		ID:                   threadedProcessedMessages[0].ID,
 		Kind:                 threadedProcessedMessages[0].Kind,
 		Pubkey:               threadedProcessedMessages[0].Pubkey,
@@ -436,7 +450,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 			if originalMessage == nil || mentions > maxMentions {
 				originalMessage = &allUniqueThreadMessages[i]
 				maxMentions = mentions
-				log.Printf("Warning: potential error/fail? (mentions > maxMentions) \"originalMessage.ID\": %v", originalMessage.ID)
+				// log.Printf("Warning: potential error/fail? (mentions > maxMentions) \"originalMessage.ID\": %v", originalMessage.ID)
 			} else if mentions == maxMentions {
 				return nil, errors.New("multiple original messages found with the same number of mentions")
 			}
@@ -444,8 +458,8 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 	}
 
 	if originalMessage == nil {
-		log.Printf("original message not found, allUniqueThreadMessages: %v", allUniqueThreadMessages)
-		return nil, errors.New("original message not found")
+		// log.Printf("original message not found: %v", originalMessage.ID)
+		return nil, errors.New("WARN: original message not found: " + originalMessage.ID)
 		// TODO: grab message from another relay?
 	}
 
