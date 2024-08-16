@@ -460,7 +460,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 
 	if originalMessage == nil {
 		// log.Printf("original message not found: %v", originalMessage.ID)
-		return nil, errors.New("WARN: original message not found: " + originalMessage.ID)
+		return nil, errors.New("WARN: original message not found")
 		// TODO: grab message from another relay?
 	}
 
