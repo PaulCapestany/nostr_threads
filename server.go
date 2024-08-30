@@ -17,7 +17,6 @@ import (
 	"time"
 
 	"github.com/couchbase/gocb/v2"
-	"github.com/go-resty/resty/v2"
 	"github.com/gorilla/mux"
 )
 
@@ -135,57 +134,6 @@ func retryOperation(operation func() error, retries int, messageIDsToQuery []str
 		time.Sleep(2 * time.Second) // Exponential backoff can be implemented here
 	}
 	return fmt.Errorf("operation failed after %d retries", retries)
-}
-
-// Ollama API Client
-var ollamaClient = resty.New().
-	SetRetryCount(3).
-	SetRetryWaitTime(3 * time.Second).
-	SetRetryMaxWaitTime(10 * time.Second)
-
-// Function to get embedding from Ollama API
-func getThreadEmbedding(content string) ([]float32, error) {
-	url := "http://ollama.ollama.svc.cluster.local/api/embed" // Replace with your Ollama server's address
-
-	fullPrompt := "" + content
-
-	// Create the payload
-	payload := map[string]interface{}{
-		"model":      "bge-m3",
-		"input":      fullPrompt,
-		"keep_alive": -1,
-	}
-
-	// Make the API call
-	resp, err := ollamaClient.R().
-		SetHeader("Content-Type", "application/json").
-		SetBody(payload).
-		Post(url)
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to make API request: %v", err)
-	}
-
-	if resp.StatusCode() != http.StatusOK {
-		return nil, fmt.Errorf("API request returned non-200 status: %v", resp.Status())
-	}
-
-	// Parse the response
-	var result struct {
-		Embeddings [][]float32 `json:"embeddings"`
-	}
-
-	err = json.Unmarshal(resp.Body(), &result)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse API response: %v", err)
-	}
-
-	// Assuming you want the first embedding array from the response
-	if len(result.Embeddings) == 0 {
-		return nil, fmt.Errorf("no embeddings found in the response")
-	}
-
-	return result.Embeddings[0], nil
 }
 
 // SanitizeContent cleans up the content by removing or replacing unwanted characters
@@ -365,7 +313,6 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 			log.Printf("Failed to execute query for ID %s: %v", id, err)
 			continue
 		} else {
-			log.Printf("Success executing query for ID: %s", id)
 			alreadyQueriedIDs[id] = true
 		}
 
