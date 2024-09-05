@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.2
 
 # Use a smaller base image for the builder stage
-FROM golang:1.22.5-alpine AS builder
+FROM golang:1.23-alpine AS builder
 
 # Install git, as it's needed for cloning the nak repository
 RUN apk add --no-cache git
