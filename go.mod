@@ -1,21 +1,27 @@
 module github.com/paulcapestany/nostr_threads
 
-go 1.22.2
+go 1.22.5
 
 require (
-	github.com/couchbase/gocb/v2 v2.8.1
-	github.com/go-resty/resty/v2 v2.14.0
+	github.com/couchbase/gocb/v2 v2.9.1
 	github.com/gorilla/mux v1.8.1
+	github.com/paulcapestany/nostr_shared v0.1.0
 )
 
 require (
-	github.com/couchbase/gocbcore/v10 v10.4.1 // indirect
-	github.com/couchbase/gocbcoreps v0.1.2 // indirect
+	github.com/couchbase/gocbcore/v10 v10.5.1 // indirect
+	github.com/couchbase/gocbcoreps v0.1.3 // indirect
 	github.com/couchbase/goprotostellar v1.0.2 // indirect
-	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20230515165046-68b522a21131 // indirect
+	github.com/couchbaselabs/gocbconnstr/v2 v2.0.0-20240607131231-fb385523de28 // indirect
+	github.com/go-logr/logr v1.4.1 // indirect
+	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/grpc-ecosystem/go-grpc-middleware v1.4.0 // indirect
+	go.opentelemetry.io/contrib/instrumentation/google.golang.org/grpc/otelgrpc v0.49.0 // indirect
+	go.opentelemetry.io/otel v1.24.0 // indirect
+	go.opentelemetry.io/otel/metric v1.24.0 // indirect
+	go.opentelemetry.io/otel/trace v1.24.0 // indirect
 	go.uber.org/multierr v1.11.0 // indirect
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/net v0.27.0 // indirect

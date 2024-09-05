@@ -16,6 +16,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/paulcapestany/nostr_shared/config"
+	"github.com/paulcapestany/nostr_shared/couchbase"
+
 	"github.com/couchbase/gocb/v2"
 	"github.com/gorilla/mux"
 )
@@ -67,13 +70,10 @@ func init() {
 
 func main() {
 	// Initialize Couchbase connection
-	var err error
-	cluster, err = gocb.Connect("couchbase://couchbase-cluster.default.svc.cluster.local", gocb.ClusterOptions{
-		Username: "admin",
-		Password: "ore8airman7goods6feudal8mantle",
-	})
+	config.Setup()
+	cluster, _, _, _, err := couchbase.InitializeCouchbase()
 	if err != nil {
-		log.Fatalf("Could not connect to Couchbase: %v", err)
+		log.Fatalf("Error initializing Couchbase: %v", err)
 	}
 	defer cluster.Close(nil)
 
@@ -246,7 +246,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	}
 
 	// Use the "threads" bucket instead of "all-nostr-events"
-	bucket := cluster.Bucket("threads")
+	bucket := cluster.Bucket(config.EnvPrefix + "threads")
 	collection := bucket.DefaultCollection()
 
 	// Upsert the thread into Couchbase

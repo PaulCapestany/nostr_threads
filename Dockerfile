@@ -6,6 +6,12 @@ FROM golang:1.22.5-alpine AS builder
 # Install git, as it's needed for cloning the nak repository
 RUN apk add --no-cache git
 
+# Set environment variables for private repo access
+ARG GITHUB_USERNAME
+ARG GITHUB_TOKEN
+ENV GOPRIVATE=github.com/paulcapestany
+RUN git config --global url."https://${GITHUB_USERNAME}:${GITHUB_TOKEN}@github.com/".insteadOf "https://github.com/"
+
 # Set the working directory inside the container
 WORKDIR /app
 
