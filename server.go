@@ -140,24 +140,41 @@ func retryOperation(operation func() error, retries int, messageIDsToQuery []str
 	return fmt.Errorf("operation failed after %d retries", retries)
 }
 
+const trustOlderTimestamps int64 = 1725897900 // Sep 9, 2024 4:05 PM as Unix timestamp
+
+// isMessageTimestampTrustworthy checks if a message's created_at is trustworthy for appending to x_cat_content
+func isMessageTimestampTrustworthy(messageCreatedAt int64, lastMsgAt int64, seenAtFirst *int64) bool {
+	if seenAtFirst != nil {
+		// If the message has a _seen_at_first field, we trust it
+		return true
+	}
+
+	if messageCreatedAt > lastMsgAt {
+		// If the message's created_at is newer than the thread's last_msg_at, we trust it
+		return true
+	}
+
+	if messageCreatedAt < trustOlderTimestamps {
+		// If the message's created_at is older than the trustOlderTimestamps, we trust it for backfilling
+		return true
+	}
+
+	return false
+}
+
 // SanitizeContent cleans up the content by removing or replacing unwanted characters
 func SanitizeContent(content string) string {
-	// Reduce multiple spaces to a single space
-	sanitized := ""
-	sanitized = strings.Join(strings.Fields(content), " ")
-
-	return sanitized
+	return strings.Join(strings.Fields(content), " ") // Reduce multiple spaces to a single space
 }
 
 // TODO: UpdateThreadHandler needs to work concurrently with multiple threads
+// UpdateThreadHandler handles requests to update threads and ensure the x_cat_content is append-only
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
-	// log.Println("UpdateThreadHandler called")
-
+	// Decode payload
 	var payload struct {
 		ID      string  `json:"id"`
 		Message Message `json:"message"`
 	}
-
 	err := json.NewDecoder(r.Body).Decode(&payload)
 	if err != nil {
 		log.Printf("Failed to decode payload: %v", err)
@@ -166,23 +183,18 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	}
 
 	log.Printf("Received payload with ID: %+v\n", payload.ID)
+
+	// Couchbase setup
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
-
-	// Fetch the existing thread document if it exists
 	bucket := cluster.Bucket(config.EnvPrefix + "threads")
 	collection := bucket.DefaultCollection()
 
+	// Fetch existing thread
 	var existingThread Thread
 	getResult, err := collection.Get(payload.ID, nil)
-	if err != nil {
-		if !gocb.IsKeyNotFoundError(err) {
-			log.Printf("Failed to fetch existing thread: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-	} else {
-		err := getResult.Content(&existingThread)
+	if err == nil {
+		err = getResult.Content(&existingThread)
 		if err != nil {
 			log.Printf("Failed to decode existing thread content: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -190,10 +202,10 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		}
 	}
 
-	// Continue with the rest of the thread construction...
+	// Process messages and fetch new ones
 	messageIDsToQuery := []string{payload.ID}
-	var allUniqueThreadMessages []Message
 	log.Println("Calling messageFetcher with messageIDsToQuery: ", messageIDsToQuery)
+	var allUniqueThreadMessages []Message
 	alreadyQueriedIDs := make(map[string]bool)
 	foundMessageIDs := make(map[string]bool)
 	err = retryOperation(func() error {
@@ -201,11 +213,12 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	}, 3, messageIDsToQuery)
 
 	if err != nil {
-		log.Printf("Failed to fetch messages: %v messageIDsToQuery: %v", err, messageIDsToQuery)
+		log.Printf("Failed to fetch messages: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Sort messages by created_at
 	sort.Slice(allUniqueThreadMessages, func(i, j int) bool {
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
@@ -217,12 +230,17 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		return
 	}
 
+	// Generate new x_cat_content based on append-only rules
 	var allMessagesContent string
 	for _, msg := range threadedProcessedMessages {
 		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+		if isMessageTimestampTrustworthy(msg.CreatedAt, existingThread.LastMsgAt, nil) {
+			// Only append content from messages we trust
+			allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+		}
 	}
 
+	// Update last_msg_at based on the latest trustworthy message
 	var lastMsgAt int64
 	for _, msg := range threadedProcessedMessages {
 		if msg.CreatedAt > lastMsgAt {
@@ -230,12 +248,11 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		}
 	}
 
-	msgCount := len(threadedProcessedMessages)
-
+	// Construct the updated thread
 	newThread := Thread{
 		CreatedAt:            threadedProcessedMessages[0].CreatedAt,
 		LastMsgAt:            lastMsgAt,
-		MsgCount:             msgCount,
+		MsgCount:             len(threadedProcessedMessages),
 		ID:                   threadedProcessedMessages[0].ID,
 		Kind:                 threadedProcessedMessages[0].Kind,
 		Pubkey:               threadedProcessedMessages[0].Pubkey,
@@ -249,30 +266,30 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		// log.Printf("SUCCESS: updated thread: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
 		log.Printf("SUCCESS: updated thread: %v", newThread.ID)
 	}
-	// Merge existing embeddings if they exist
+
+	// Merge any existing embeddings
 	if existingThread.XEmbeddings != nil {
 		newThread.XEmbeddings = existingThread.XEmbeddings
 	}
 
-	// Upsert the thread into Couchbase
+	// Upsert the updated thread into Couchbase
 	err = retryOperation(func() error {
 		_, err = collection.Upsert(newThread.ID, newThread, nil)
 		return err
 	}, 3, messageIDsToQuery)
-
 	if err != nil {
-		log.Printf("Failed to upsert thread: %v messageIDsToQuery: %v", err, messageIDsToQuery)
+		log.Printf("Failed to upsert thread: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	// Respond with the updated thread
 	responseJSON, err := json.Marshal(newThread)
 	if err != nil {
 		log.Printf("Failed to marshal response JSON: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-
 	w.WriteHeader(http.StatusOK)
 	w.Header().Set("Content-Type", "application/json")
 	w.Write(responseJSON)
