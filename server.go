@@ -23,6 +23,20 @@ import (
 	"github.com/gorilla/mux"
 )
 
+// JSON structure of our threads' embedding aspect needs to look similar to this:
+// {
+// 	  "x_embeddings": {
+//   	  "mxbai-embed-large": {
+// 		  "mxbai-embed-large-embeddings": [[0.017701002, -0.0052093007]],
+// 		  "last_processed_token_position": 512  // The position in x_cat_content where embedding ended.
+// 	    },
+// 	    "nomic-embed-text": {
+// 		  "nomic-embed-text-embeddings": [[-0.020272737, 0.020430557]],
+// 		  "last_processed_token_position": 1000
+// 	    }
+// 	  }
+//  }
+
 // nostr_threads flow
 // gets an arbitrary message ID, first checks if it's already in the all-nostr-events bucket, if not, uses nak to fetch it
 
@@ -57,8 +71,32 @@ type Thread struct {
 
 // EmbeddingInfo holds the embeddings and token position for a model
 type EmbeddingInfo struct {
-	Embeddings                 [][]float32 `json:"embeddings"`
-	LastProcessedTokenPosition int         `json:"last_processed_token_position"`
+	Embeddings                 map[string][][]float32 `json:"-"` // Use map for dynamic field
+	LastProcessedTokenPosition int                    `json:"last_processed_token_position"`
+}
+
+// MarshalJSON will handle the dynamic JSON structure for embeddings
+func (ei EmbeddingInfo) MarshalJSON() ([]byte, error) {
+	// Create a temporary struct to hold the final JSON
+	type embeddingAlias EmbeddingInfo
+	temp := embeddingAlias(ei)
+
+	// Manually construct the embeddings field with the model name as the key
+	embeddingsField := make(map[string]interface{})
+	for modelName, embeddings := range ei.Embeddings {
+		// Generate the key by appending the model name
+		key := fmt.Sprintf("%s-embeddings", modelName)
+		embeddingsField[key] = embeddings
+	}
+
+	// Convert temp struct into a map
+	finalJSON := make(map[string]interface{})
+	finalJSON["last_processed_token_position"] = temp.LastProcessedTokenPosition
+	for key, value := range embeddingsField {
+		finalJSON[key] = value
+	}
+
+	return json.Marshal(finalJSON)
 }
 
 func init() {
@@ -168,6 +206,7 @@ func SanitizeContent(content string) string {
 }
 
 // TODO: UpdateThreadHandler needs to work concurrently with multiple threads
+// UpdateThreadHandler handles requests to update threads and ensure the x_cat_content is append-only
 // UpdateThreadHandler handles requests to update threads and ensure the x_cat_content is append-only
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
 	// Decode payload
