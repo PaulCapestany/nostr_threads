@@ -186,6 +186,11 @@ const trustOlderTimestamps int64 = 1725897900 // Sep 9, 2024 4:05 PM as Unix tim
 
 // isMessageTimestampTrustworthy checks if a message's created_at is trustworthy for appending to x_cat_content
 func isMessageTimestampTrustworthy(messageCreatedAt int64, lastMsgAt int64, seenAtFirst *int64) bool {
+	if *seenAtFirst == 0 {
+		// If the message has default/0 _seen_at_first field, we don't want to use seenAtFirst
+		return false
+	}
+
 	if seenAtFirst != nil {
 		// If the message has a _seen_at_first field, we trust it
 		return true
@@ -368,7 +373,7 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
             USE INDEX (kind_and_event_lookup USING GSI)
             WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "%s" END)
         )
-        SELECT message.content, message.created_at, message.id, message.kind, message.pubkey, message.sig, message.tags
+        SELECT message.content, message.created_at, message._seen_at_first, message.id, message.kind, message.pubkey, message.sig, message.tags
         FROM referencedMessages AS message`, id, id)
 
 		results, err := cluster.Query(query, nil)
