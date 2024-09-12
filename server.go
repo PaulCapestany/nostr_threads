@@ -261,7 +261,6 @@ func SanitizeContent(content string) string {
 
 // TODO: UpdateThreadHandler needs to work concurrently with multiple threads
 // UpdateThreadHandler handles requests to update threads and ensure the x_cat_content is append-only
-// UpdateThreadHandler handles requests to update threads and ensure the x_cat_content is append-only
 func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.Cluster) {
 	// Decode payload
 	var payload struct {
@@ -354,11 +353,12 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		XConcatenatedContent: allMessagesContent,
 	}
 
-	if newThread.ID == messageIDsToQuery[0] {
-		log.Printf("SUCCESS: new thread: %v", newThread.ID)
-	} else {
-		// log.Printf("SUCCESS: updated thread: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
-		log.Printf("SUCCESS: updated thread: %v", newThread.ID)
+	// Prevent overwriting x_last_processed_at and x_last_processed_token_position if they exist
+	if existingThread.XLastProcessedAt != 0 {
+		newThread.XLastProcessedAt = existingThread.XLastProcessedAt
+	}
+	if existingThread.XLastProcessedTokenPosition != 0 {
+		newThread.XLastProcessedTokenPosition = existingThread.XLastProcessedTokenPosition
 	}
 
 	// Merge any existing embeddings
