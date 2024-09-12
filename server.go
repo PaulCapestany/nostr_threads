@@ -75,7 +75,8 @@ import (
 // 	"x_embeddings": {
 // 	  "mxbai-embed-large": {
 // 		"mxbai-embed-large-embeddings": [
-// 		  [-0.019370565,-0.019032586]
+// 		  [0.019370565,-0.019032586],
+// 		  [-0.123124121,0.091284109]
 // 		]
 // 	  },
 // 	  "nomic-embed-text": {
@@ -84,7 +85,7 @@ import (
 // 		]
 // 	  }
 // 	}
-//   }
+// }
 
 // nostr_threads flow
 // gets an arbitrary message ID, first checks if it's already in the all-nostr-events bucket, if not, uses nak to fetch it
