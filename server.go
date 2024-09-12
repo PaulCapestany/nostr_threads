@@ -23,7 +23,7 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// TODO: need to make sure JSON structure for our thread document is being dealt with properly throughout the nostr_threads codebase:
+// JSON structure for our thread document:
 // {
 // 	"_seen_at_first": 1726153406,
 // 	"created_at": 1726153405,
