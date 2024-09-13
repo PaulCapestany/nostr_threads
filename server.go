@@ -354,6 +354,13 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		XConcatenatedContent: allMessagesContent,
 	}
 
+	if newThread.ID == messageIDsToQuery[0] {
+		log.Printf("SUCCESS: new thread: %v", newThread.ID)
+	} else {
+		// log.Printf("SUCCESS: updated thread: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
+		log.Printf("SUCCESS: updated thread: %v", newThread.ID)
+	}
+
 	// Prevent overwriting x_last_processed_at and x_last_processed_token_position if they exist
 	if existingThread.XLastProcessedAt != 0 {
 		newThread.XLastProcessedAt = existingThread.XLastProcessedAt
