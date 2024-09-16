@@ -358,7 +358,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		log.Printf("SUCCESS: new thread: %v", newThread.ID)
 	} else {
 		// log.Printf("SUCCESS: updated thread: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
-		log.Printf("SUCCESS: updated thread (mCount = %v): %v", newThread.ID, mCount)
+		log.Printf("SUCCESS: updated thread (%v messages): %v", mCount, newThread.ID)
 	}
 
 	// Prevent overwriting x_last_processed_at and x_last_processed_token_position if they exist
