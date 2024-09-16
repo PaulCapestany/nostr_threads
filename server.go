@@ -340,13 +340,13 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 			lastMsgAt = msg.CreatedAt
 		}
 	}
-
+	mCount := len(threadedProcessedMessages)
 	// Construct the updated thread
 	newThread := Thread{
 		CreatedAt:            threadedProcessedMessages[0].CreatedAt,
 		SeenAtFirst:          threadedProcessedMessages[0].SeenAtFirst,
 		LastMsgAt:            lastMsgAt,
-		MsgCount:             len(threadedProcessedMessages),
+		MsgCount:             mCount,
 		ID:                   threadedProcessedMessages[0].ID,
 		Kind:                 threadedProcessedMessages[0].Kind,
 		Pubkey:               threadedProcessedMessages[0].Pubkey,
@@ -358,7 +358,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		log.Printf("SUCCESS: new thread: %v", newThread.ID)
 	} else {
 		// log.Printf("SUCCESS: updated thread: %v via messageIDsToQuery: %v\n", newThread.ID, messageIDsToQuery)
-		log.Printf("SUCCESS: updated thread: %v", newThread.ID)
+		log.Printf("SUCCESS: updated thread (mCount = %v): %v", newThread.ID, mCount)
 	}
 
 	// Prevent overwriting x_last_processed_at and x_last_processed_token_position if they exist
