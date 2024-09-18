@@ -246,22 +246,22 @@ func isMessageTimestampTrustworthy(messageCreatedAt int64, lastMsgAt int64, seen
 		return false
 	}
 
-	// If the message has a _seen_at_first value, we trust it.
+	// Trust messages with a _seen_at_first value
 	if seenAtFirst != nil && *seenAtFirst != 0 {
 		return true
 	}
 
-	// If no _seen_at_first, but created_at is newer than the thread's last_msg_at, we trust the created_at.
-	if messageCreatedAt > lastMsgAt {
-		return true
-	}
-
-	// Trust backfilled messages that are older than a defined timestamp (for historical messages).
+	// Trust backfilled messages older than the cutoff timestamp
 	if messageCreatedAt < trustOlderTimestamps {
 		return true
 	}
 
-	// If none of the above conditions hold, the timestamp is not trustworthy.
+	// If no _seen_at_first, but created_at is newer than last_msg_at, trust the created_at.
+	if messageCreatedAt > lastMsgAt {
+		return true
+	}
+
+	// Otherwise, the timestamp is not trustworthy
 	return false
 }
 
