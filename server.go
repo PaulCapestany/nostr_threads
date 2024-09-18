@@ -101,8 +101,10 @@ type Message struct {
 	Sig         string        `json:"sig"`
 	Tags        []interface{} `json:"tags"`
 	// NOTE: ParentID and Depth fields are not present in the JSON payload, we have to recursively search/construct them
-	ParentID string `json:"parent_id"`
-	Depth    int    `json:"depth"`
+	ParentID       string `json:"parent_id"`
+	Depth          int    `json:"depth"`
+	XAppendedToCat bool   `json:"x_appended_to_cat"` // Tracks if message was appended to x_cat_content
+	XTrustworthy   bool   `json:"x_trustworthy"`
 }
 
 // Thread represents a flattened Nostr thread structure
@@ -345,6 +347,11 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	// Generate new x_cat_content based on append-only rules
 	var allMessagesContent string
 	for _, msg := range threadedProcessedMessages {
+		// If message was already appended, skip it.
+		if msg.XAppendedToCat {
+			continue
+		}
+
 		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
 
 		// Fetch the parent message (if it exists)
@@ -359,11 +366,14 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 			}
 		}
 
-		// Apply the updated universal trust logic
-		if isMessageTimestampTrustworthy(msg.CreatedAt, existingThread.LastMsgAt, &msg.SeenAtFirst, parentCreatedAt, parentSeenAtFirst) {
-			// Only append content from messages we trust
-			allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
-		}
+		// Trust the message if it passes the universal trust checks and update the trust flag
+		msg.XTrustworthy = isMessageTimestampTrustworthy(msg.CreatedAt, existingThread.LastMsgAt, &msg.SeenAtFirst, parentCreatedAt, parentSeenAtFirst)
+
+		// Append message content to x_cat_content regardless of trustworthiness
+		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+
+		// Mark the message as appended to avoid future duplicates
+		msg.XAppendedToCat = true
 	}
 
 	// Update last_msg_at based on the latest trustworthy message
@@ -374,6 +384,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		}
 	}
 	mCount := len(threadedProcessedMessages)
+
 	// Construct the updated thread
 	newThread := Thread{
 		CreatedAt:            threadedProcessedMessages[0].CreatedAt,
@@ -391,6 +402,9 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	newThread.XLastProcessedAt = existingThread.XLastProcessedAt
 	newThread.XLastProcessedTokenPosition = existingThread.XLastProcessedTokenPosition
 	newThread.XEmbeddings = existingThread.XEmbeddings
+
+	// Log the thread's ID and MsgCount before storing the updated thread
+	log.Printf("Updating thread: ID=%s, MsgCount=%d", newThread.ID, newThread.MsgCount)
 
 	// Implement CAS-based optimistic concurrency control
 	const maxRetries = 5
