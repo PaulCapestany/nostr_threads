@@ -230,28 +230,36 @@ func retryOperation(operation func() error, retries int, messageIDsToQuery []str
 
 const trustOlderTimestamps int64 = 1725897900 // Sep 9, 2024 4:05 PM as Unix timestamp
 
-// isMessageTimestampTrustworthy checks if a message's created_at is trustworthy for appending to x_cat_content
-func isMessageTimestampTrustworthy(messageCreatedAt int64, lastMsgAt int64, seenAtFirst *int64) bool {
-	if *seenAtFirst == 0 {
-		// If the message has default/0 _seen_at_first field, we don't want to use seenAtFirst
+// isMessageTimestampTrustworthy checks if a message's created_at or _seen_at_first is trustworthy for appending to x_cat_content.
+// Parent-child validation is always enforced, ensuring a child cannot precede its parent in terms of timestamps.
+func isMessageTimestampTrustworthy(messageCreatedAt int64, lastMsgAt int64, seenAtFirst *int64, parentCreatedAt *int64, parentSeenAtFirst *int64) bool {
+	// Parent-child validation: A child message cannot precede its parent in either created_at or _seen_at_first.
+	if parentCreatedAt != nil && messageCreatedAt < *parentCreatedAt {
+		log.Printf("Message created_at %d is earlier than its parent's created_at %d; rejecting message.", messageCreatedAt, *parentCreatedAt)
 		return false
 	}
 
-	if seenAtFirst != nil {
-		// If the message has a _seen_at_first field, we trust it
+	if parentSeenAtFirst != nil && seenAtFirst != nil && *seenAtFirst < *parentSeenAtFirst {
+		log.Printf("Message _seen_at_first %d is earlier than its parent's _seen_at_first %d; rejecting message.", *seenAtFirst, *parentSeenAtFirst)
+		return false
+	}
+
+	// If the message has a _seen_at_first value, we trust it.
+	if seenAtFirst != nil && *seenAtFirst != 0 {
 		return true
 	}
 
+	// If no _seen_at_first, but created_at is newer than the thread's last_msg_at, we trust the created_at.
 	if messageCreatedAt > lastMsgAt {
-		// If the message's created_at is newer than the thread's last_msg_at, we trust it
 		return true
 	}
 
+	// Trust backfilled messages that are older than a defined timestamp (for historical messages).
 	if messageCreatedAt < trustOlderTimestamps {
-		// If the message's created_at is older than the trustOlderTimestamps, we trust it for backfilling
 		return true
 	}
 
+	// If none of the above conditions hold, the timestamp is not trustworthy.
 	return false
 }
 
@@ -326,6 +334,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		return allUniqueThreadMessages[i].CreatedAt < allUniqueThreadMessages[j].CreatedAt
 	})
 
+	// Process threading logic and apply parent-child validation
 	threadedProcessedMessages, err := processMessageThreading(allUniqueThreadMessages)
 	if err != nil {
 		log.Printf("Failed to process message threading: %v messageIDsToQuery: %v", err, messageIDsToQuery)
@@ -337,7 +346,21 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	var allMessagesContent string
 	for _, msg := range threadedProcessedMessages {
 		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-		if isMessageTimestampTrustworthy(msg.CreatedAt, existingThread.LastMsgAt, &msg.SeenAtFirst) {
+
+		// Fetch the parent message (if it exists)
+		var parentCreatedAt, parentSeenAtFirst *int64
+		if msg.ParentID != "" {
+			for _, parentMsg := range threadedProcessedMessages {
+				if parentMsg.ID == msg.ParentID {
+					parentCreatedAt = &parentMsg.CreatedAt
+					parentSeenAtFirst = &parentMsg.SeenAtFirst
+					break
+				}
+			}
+		}
+
+		// Apply the updated universal trust logic
+		if isMessageTimestampTrustworthy(msg.CreatedAt, existingThread.LastMsgAt, &msg.SeenAtFirst, parentCreatedAt, parentSeenAtFirst) {
 			// Only append content from messages we trust
 			allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
 		}
@@ -362,12 +385,6 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		Pubkey:               threadedProcessedMessages[0].Pubkey,
 		Messages:             threadedProcessedMessages,
 		XConcatenatedContent: allMessagesContent,
-	}
-
-	if newThread.ID == messageIDsToQuery[0] {
-		log.Printf("SUCCESS: new thread: %v", newThread.ID)
-	} else {
-		log.Printf("SUCCESS: updated thread (%v messages): %v", mCount, newThread.ID)
 	}
 
 	// Preserve existing fields
