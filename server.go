@@ -346,7 +346,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 	// Generate new x_cat_content based on append-only rules
 	var allMessagesContent string
-	for _, msg := range threadedProcessedMessages {
+	for i, msg := range threadedProcessedMessages {
 		// If message was already appended, skip it.
 		if msg.XAppendedToCat {
 			continue
@@ -374,6 +374,9 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 		// Mark the message as appended to avoid future duplicates
 		msg.XAppendedToCat = true
+
+		// Save the updated message back into the slice
+		threadedProcessedMessages[i] = msg
 	}
 
 	// Update last_msg_at based on the latest trustworthy message
@@ -533,18 +536,17 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	// Merge messages, avoiding duplicates
 	messageMap := make(map[string]Message)
 
-	// First, add all messages from existingThread to the map
+	// Add all messages from existingThread to the map first
 	for _, msg := range existingThread.Messages {
 		messageMap[msg.ID] = msg
 	}
 
 	// Then, iterate over newThread messages and update/merge them
 	for _, newMsg := range newThread.Messages {
-		// Check if the message already exists in the map (i.e., from existingThread)
 		if existingMsg, exists := messageMap[newMsg.ID]; exists {
-			// Merge logic: we keep the newMsg fields like XAppendedToCat and XTrustworthy
-			existingMsg.XAppendedToCat = newMsg.XAppendedToCat || existingMsg.XAppendedToCat
-			existingMsg.XTrustworthy = newMsg.XTrustworthy || existingMsg.XTrustworthy
+			// Merge logic: update XAppendedToCat and XTrustworthy flags
+			existingMsg.XAppendedToCat = existingMsg.XAppendedToCat || newMsg.XAppendedToCat
+			existingMsg.XTrustworthy = existingMsg.XTrustworthy || newMsg.XTrustworthy
 			messageMap[newMsg.ID] = existingMsg // Update the message in the map
 		} else {
 			// If the message doesn't exist, add it directly
@@ -563,11 +565,14 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		return mergedMessages[i].CreatedAt < mergedMessages[j].CreatedAt
 	})
 
-	// Rebuild x_cat_content
+	// Rebuild x_cat_content, ensuring we only append content for messages that haven't been appended before
 	var allMessagesContent string
 	for _, msg := range mergedMessages {
-		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+		if !msg.XAppendedToCat {
+			sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
+			allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+			msg.XAppendedToCat = true // Mark message as appended
+		}
 	}
 
 	// Update last_msg_at based on the latest message
