@@ -403,9 +403,6 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	newThread.XLastProcessedTokenPosition = existingThread.XLastProcessedTokenPosition
 	newThread.XEmbeddings = existingThread.XEmbeddings
 
-	// Log the thread's ID and MsgCount before storing the updated thread
-	log.Printf("Updating thread: ID=%s, MsgCount=%d", newThread.ID, newThread.MsgCount)
-
 	// Implement CAS-based optimistic concurrency control
 	const maxRetries = 5
 	retries := 0
@@ -448,6 +445,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 				}
 			} else {
 				// Insert succeeded
+				log.Printf("Final saved thread (insert): ID=%s, MsgCount=%d", newThread.ID, newThread.MsgCount)
 				break
 			}
 		} else {
@@ -512,6 +510,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 				}
 			} else {
 				// Replace succeeded
+				log.Printf("Final saved thread (replace): ID=%s, MsgCount=%d", newThread.ID, newThread.MsgCount)
 				break
 			}
 		}
