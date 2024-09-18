@@ -101,10 +101,9 @@ type Message struct {
 	Sig         string        `json:"sig"`
 	Tags        []interface{} `json:"tags"`
 	// NOTE: ParentID and Depth fields are not present in the JSON payload, we have to recursively search/construct them
-	ParentID       string `json:"parent_id"`
-	Depth          int    `json:"depth"`
-	XAppendedToCat bool   `json:"x_appended_to_cat"` // Tracks if message was appended to x_cat_content
-	XTrustworthy   bool   `json:"x_trustworthy"`
+	ParentID     string `json:"parent_id"`
+	Depth        int    `json:"depth"`
+	XTrustworthy bool   `json:"x_trustworthy"`
 }
 
 // Thread represents a flattened Nostr thread structure
@@ -347,11 +346,6 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	// Generate new x_cat_content based on append-only rules
 	var allMessagesContent string
 	for i, msg := range threadedProcessedMessages {
-		// If message was already appended, skip it.
-		if msg.XAppendedToCat {
-			continue
-		}
-
 		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
 
 		// Fetch the parent message (if it exists)
@@ -371,9 +365,6 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 		// Append message content to x_cat_content regardless of trustworthiness
 		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
-
-		// Mark the message as appended to avoid future duplicates
-		msg.XAppendedToCat = true
 
 		// Save the updated message back into the slice
 		threadedProcessedMessages[i] = msg
@@ -541,41 +532,34 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		messageMap[msg.ID] = msg
 	}
 
-	// Then, iterate over newThread messages and update/merge them
+	// Iterate over newThread messages and update/merge them
 	for _, newMsg := range newThread.Messages {
 		if existingMsg, exists := messageMap[newMsg.ID]; exists {
-			// Merge logic: update XAppendedToCat and XTrustworthy flags
-			existingMsg.XAppendedToCat = existingMsg.XAppendedToCat || newMsg.XAppendedToCat
+			// Merge logic: update XTrustworthy flag
 			existingMsg.XTrustworthy = existingMsg.XTrustworthy || newMsg.XTrustworthy
 			messageMap[newMsg.ID] = existingMsg // Update the message in the map
 		} else {
-			// If the message doesn't exist, add it directly
 			messageMap[newMsg.ID] = newMsg
 		}
 	}
 
-	// Convert the map back to a slice
+	// Sort messages by created_at
 	mergedMessages := make([]Message, 0, len(messageMap))
 	for _, msg := range messageMap {
 		mergedMessages = append(mergedMessages, msg)
 	}
 
-	// Sort messages by created_at
 	sort.Slice(mergedMessages, func(i, j int) bool {
 		return mergedMessages[i].CreatedAt < mergedMessages[j].CreatedAt
 	})
 
-	// Rebuild x_cat_content, ensuring we only append content for messages that haven't been appended before
+	// Rebuild x_cat_content, ensuring we only append content for new messages
 	var allMessagesContent string
 	for _, msg := range mergedMessages {
-		if !msg.XAppendedToCat {
-			sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-			allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
-			msg.XAppendedToCat = true // Mark message as appended
-		}
+		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
+		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
 	}
 
-	// Update last_msg_at based on the latest message
 	var lastMsgAt int64
 	for _, msg := range mergedMessages {
 		if msg.CreatedAt > lastMsgAt {
