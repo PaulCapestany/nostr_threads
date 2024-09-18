@@ -532,14 +532,27 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	// Merge messages, avoiding duplicates
 	messageMap := make(map[string]Message)
+
+	// First, add all messages from existingThread to the map
 	for _, msg := range existingThread.Messages {
 		messageMap[msg.ID] = msg
 	}
-	for _, msg := range newThread.Messages {
-		messageMap[msg.ID] = msg
+
+	// Then, iterate over newThread messages and update/merge them
+	for _, newMsg := range newThread.Messages {
+		// Check if the message already exists in the map (i.e., from existingThread)
+		if existingMsg, exists := messageMap[newMsg.ID]; exists {
+			// Merge logic: we keep the newMsg fields like XAppendedToCat and XTrustworthy
+			existingMsg.XAppendedToCat = newMsg.XAppendedToCat || existingMsg.XAppendedToCat
+			existingMsg.XTrustworthy = newMsg.XTrustworthy || existingMsg.XTrustworthy
+			messageMap[newMsg.ID] = existingMsg // Update the message in the map
+		} else {
+			// If the message doesn't exist, add it directly
+			messageMap[newMsg.ID] = newMsg
+		}
 	}
 
-	// Convert map back to slice
+	// Convert the map back to a slice
 	mergedMessages := make([]Message, 0, len(messageMap))
 	for _, msg := range messageMap {
 		mergedMessages = append(mergedMessages, msg)
