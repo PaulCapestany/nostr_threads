@@ -224,6 +224,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		}
 	} else if errors.Is(err, gocb.ErrDocumentNotFound) {
 		// Document does not exist; initialize CAS to 0
+		log.Printf("Thread not found, initializing new thread")
 		cas = 0
 		existingThread = Thread{} // Empty thread
 	} else {
@@ -340,6 +341,12 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 // mergeThreads merges the existing thread with the new thread, ensuring x_cat_content is append-only
 func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	log.Printf("mergeThreads called, existingThread: %v newThread: %v", existingThread.ID, newThread.ID)
+
+	if existingThread.ID == "" {
+		log.Printf("No existing thread found, initializing new thread")
+		return newThread, nil
+	}
+
 	messageMap := make(map[string]Message)
 	// Add all messages from existingThread to the map first
 	for _, msg := range existingThread.Messages {
@@ -413,9 +420,11 @@ func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection)
 		var mutationErr error
 		if cas == 0 {
 			// Document does not exist, try to insert
+			log.Printf("Attempting to insert new thread: %v", thread.ID)
 			_, mutationErr = collection.Insert(thread.ID, thread, nil)
 			if mutationErr != nil {
 				if errors.Is(mutationErr, gocb.ErrDocumentExists) {
+					log.Printf("Document already exists for thread: %v", thread.ID)
 					// Handle the document already existing by retrieving the current CAS and thread
 					getResult, err := collection.Get(thread.ID, nil)
 					if err == nil {
@@ -423,23 +432,26 @@ func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection)
 						var existingThread Thread
 						err = getResult.Content(&existingThread)
 						if err == nil {
-							// Call mergeThreads here, since now we have both new and existing threads
+							log.Printf("Merging threads after CAS conflict for thread: %v", thread.ID)
 							thread, _ = mergeThreads(existingThread, thread)
 						}
 					}
 				}
 			} else {
 				// Insert succeeded
-				log.Printf("Final saved thread (insert): ID=%s, MsgCount=%d", thread.ID, thread.MsgCount)
+				log.Printf("Successfully inserted thread: ID=%s, MsgCount=%d", thread.ID, thread.MsgCount)
 				break
 			}
 		} else {
+			log.Printf("Attempting to replace thread with CAS: %v", cas)
 			replaceOptions := &gocb.ReplaceOptions{Cas: cas}
 			_, mutationErr = collection.Replace(thread.ID, thread, replaceOptions)
 			if mutationErr != nil {
 				if errors.Is(mutationErr, gocb.ErrCasMismatch) {
 					retries++
+					log.Printf("CAS mismatch detected, retrying... (retry %d/%d)", retries, maxRetries)
 					if retries >= maxRetries {
+						log.Printf("Max retries reached, aborting for thread: %v", thread.ID)
 						break
 					}
 					// Retrieve the latest CAS and thread for the mismatch
@@ -449,14 +461,14 @@ func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection)
 						var existingThread Thread
 						err = getResult.Content(&existingThread)
 						if err == nil {
-							// Call mergeThreads again to resolve the conflict
+							log.Printf("Merging threads after CAS mismatch for thread: %v", thread.ID)
 							thread, _ = mergeThreads(existingThread, thread)
 						}
 					}
 				}
 			} else {
 				// Replace succeeded
-				log.Printf("Final saved thread (replace): ID=%s, MsgCount=%d", thread.ID, thread.MsgCount)
+				log.Printf("Successfully replaced thread: ID=%s, MsgCount=%d", thread.ID, thread.MsgCount)
 				break
 			}
 		}
