@@ -241,7 +241,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	alreadyQueriedIDs := make(map[string]bool)
 	foundMessageIDs := make(map[string]bool)
 	err = retryOperation(func() error {
-		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs)
+		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs, 50)
 	}, 3, messageIDsToQuery)
 
 	if err != nil {
@@ -475,90 +475,126 @@ func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection)
 	}
 }
 
-func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster, alreadyQueriedIDs map[string]bool, foundMessageIDs map[string]bool) error {
+func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster, alreadyQueriedIDs map[string]bool, foundMessageIDs map[string]bool, maxGoroutines int) error {
 	if cluster == nil {
 		log.Println("Cluster connection is not initialized.")
 		return fmt.Errorf("cluster connection is not initialized")
 	}
 
+	var mu sync.Mutex // Mutex to protect shared resources
 	messageIDsToQuery := make([]string, 0)
 	messageMap := make(map[string]Message)
 	for _, msg := range *allUniqueThreadMessages {
 		messageMap[msg.ID] = msg
 	}
 
+	var wg sync.WaitGroup
+	resultsCh := make(chan Message, len(messageIDs)) // Channel to collect results
+	semaphore := make(chan struct{}, maxGoroutines)  // Semaphore to limit goroutines
+
 	for _, id := range messageIDs {
 		if alreadyQueriedIDs[id] {
 			continue // Skip IDs already marked as missing
 		}
 
-		query := fmt.Sprintf(`WITH referencedMessages AS (
-            SELECT d.*
-            FROM `+"`all-nostr-events`._default._default"+` AS d
-            USE KEYS "%s"
+		// Acquire a spot in the semaphore
+		semaphore <- struct{}{}
 
-            UNION
+		// Fetch messages concurrently using goroutines
+		wg.Add(1)
+		go func(id string) {
+			defer wg.Done()
 
-            SELECT refMessage.*
-            FROM `+"`all-nostr-events`._default._default"+` AS refMessage
-            USE INDEX (kind_and_event_lookup USING GSI)
-            WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "%s" END)
-        )
-        SELECT message.content, message.created_at, message._seen_at_first, message.id, message.kind, message.pubkey, message.sig, message.tags, message.x_trustworthy
-        FROM referencedMessages AS message`, id, id)
+			defer func() {
+				<-semaphore // Release the semaphore when the goroutine finishes
+			}()
 
-		results, err := cluster.Query(query, nil)
-		if err != nil {
-			log.Printf("Failed to execute query for ID %s: %v", id, err)
-			continue
-		} else {
+			query := fmt.Sprintf(`WITH referencedMessages AS (
+                SELECT d.*
+                FROM `+"`all-nostr-events`._default._default"+` AS d
+                USE KEYS "%s"
+
+                UNION
+
+                SELECT refMessage.*
+                FROM `+"`all-nostr-events`._default._default"+` AS refMessage
+                USE INDEX (kind_and_event_lookup USING GSI)
+                WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "%s" END)
+            )
+            SELECT message.content, message.created_at, message._seen_at_first, message.id, message.kind, message.pubkey, message.sig, message.tags, message.x_trustworthy
+            FROM referencedMessages AS message`, id, id)
+
+			results, err := cluster.Query(query, nil)
+			if err != nil {
+				log.Printf("Failed to execute query for ID %s: %v", id, err)
+				return
+			}
+
+			mu.Lock()
 			alreadyQueriedIDs[id] = true
-		}
+			mu.Unlock()
 
-		for results.Next() {
-			select {
-			case <-ctx.Done():
-				return ctx.Err()
-			default:
-			}
+			for results.Next() {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 
-			var msg Message
-			if err := results.Row(&msg); err != nil {
-				log.Printf("Failed to parse message: %v", err)
-				continue
-			}
-			if msg.Kind != 1 {
-				continue
-			}
-
-			contentStr := fmt.Sprintf("%v", msg.Content)
-			msg.Content = contentStr
-
-			for _, tag := range msg.Tags {
-				tagSlice, ok := tag.([]interface{})
-				if !ok || len(tagSlice) < 2 || tagSlice[0] != "e" {
+				var msg Message
+				if err := results.Row(&msg); err != nil {
+					log.Printf("Failed to parse message: %v", err)
 					continue
 				}
-				if idStr, ok := tagSlice[1].(string); ok && !contains(foundMessageIDs, idStr) && !contains(alreadyQueriedIDs, idStr) {
-					messageIDsToQuery = append(messageIDsToQuery, idStr)
+				if msg.Kind != 1 {
+					continue
 				}
+
+				contentStr := fmt.Sprintf("%v", msg.Content)
+				msg.Content = contentStr
+
+				resultsCh <- msg // Send the message to the channel
 			}
-			if !containsMessage(foundMessageIDs, msg.ID) {
-				messageIDsToQuery = append(messageIDsToQuery, msg.ID)
-				*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg)
-				foundMessageIDs[msg.ID] = true
+
+			if err := results.Err(); err != nil {
+				log.Printf("Error iterating results for ID %s: %v", id, err)
 			}
+		}(id)
+	}
+
+	go func() {
+		wg.Wait()
+		close(resultsCh) // Close the channel when all goroutines are done
+	}()
+
+	for msg := range resultsCh {
+		mu.Lock()
+		if !contains(foundMessageIDs, msg.ID) {
+			messageIDsToQuery = append(messageIDsToQuery, msg.ID)
+			*allUniqueThreadMessages = append(*allUniqueThreadMessages, msg)
+			foundMessageIDs[msg.ID] = true
 		}
-		if err := results.Err(); err != nil {
-			log.Printf("Error iterating results: %v", err)
+		mu.Unlock()
+
+		// Check for additional message IDs to query
+		for _, tag := range msg.Tags {
+			tagSlice, ok := tag.([]interface{})
+			if !ok || len(tagSlice) < 2 || tagSlice[0] != "e" {
+				continue
+			}
+			if idStr, ok := tagSlice[1].(string); ok && !contains(foundMessageIDs, idStr) && !contains(alreadyQueriedIDs, idStr) {
+				mu.Lock()
+				messageIDsToQuery = append(messageIDsToQuery, idStr)
+				mu.Unlock()
+			}
 		}
 	}
 
 	// Recursively fetch messages for newly discovered IDs if there are any
 	if len(messageIDsToQuery) > 0 {
-		return messageFetcher(ctx, messageIDsToQuery, allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs)
+		return messageFetcher(ctx, messageIDsToQuery, allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs, maxGoroutines)
 	}
-	// log.Printf("alreadyQueriedIDs: %v", alreadyQueriedIDs)
+
 	log.Printf("foundMessageIDs: %v", foundMessageIDs)
 	return nil
 }
