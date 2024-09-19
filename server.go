@@ -343,10 +343,8 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		return
 	}
 
-	// Generate new x_cat_content based on append-only rules
-	var allMessagesContent string
+	// validate that the message is trustworthy in terms of ordering/parent-child relationships and timestamps
 	for i, msg := range threadedProcessedMessages {
-		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
 
 		// Fetch the parent message (if it exists)
 		var parentCreatedAt, parentSeenAtFirst *int64
@@ -363,9 +361,6 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		// Trust the message if it passes the universal trust checks and update the trust flag
 		msg.XTrustworthy = isMessageTimestampTrustworthy(msg.CreatedAt, existingThread.LastMsgAt, &msg.SeenAtFirst, parentCreatedAt, parentSeenAtFirst)
 
-		// Append message content to x_cat_content regardless of trustworthiness
-		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
-
 		// Save the updated message back into the slice
 		threadedProcessedMessages[i] = msg
 	}
@@ -381,134 +376,33 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 	// Construct the updated thread
 	newThread := Thread{
-		CreatedAt:            threadedProcessedMessages[0].CreatedAt,
-		SeenAtFirst:          threadedProcessedMessages[0].SeenAtFirst,
-		LastMsgAt:            lastMsgAt,
-		MsgCount:             mCount,
-		ID:                   threadedProcessedMessages[0].ID,
-		Kind:                 threadedProcessedMessages[0].Kind,
-		Pubkey:               threadedProcessedMessages[0].Pubkey,
-		Messages:             threadedProcessedMessages,
-		XConcatenatedContent: allMessagesContent,
+		CreatedAt:   threadedProcessedMessages[0].CreatedAt,
+		SeenAtFirst: threadedProcessedMessages[0].SeenAtFirst,
+		LastMsgAt:   lastMsgAt,
+		MsgCount:    mCount,
+		ID:          threadedProcessedMessages[0].ID,
+		Kind:        threadedProcessedMessages[0].Kind,
+		Pubkey:      threadedProcessedMessages[0].Pubkey,
+		Messages:    threadedProcessedMessages,
+		// XConcatenatedContent: allMessagesContent,
 	}
 
 	// Preserve existing fields
+	newThread.XConcatenatedContent = existingThread.XConcatenatedContent // ???: not sure if this is correct
 	newThread.XLastProcessedAt = existingThread.XLastProcessedAt
 	newThread.XLastProcessedTokenPosition = existingThread.XLastProcessedTokenPosition
 	newThread.XEmbeddings = existingThread.XEmbeddings
 
-	// Implement CAS-based optimistic concurrency control
-	const maxRetries = 5
-	retries := 0
-	for {
-		var mutationErr error
-		if cas == 0 {
-			// Document does not exist, try to insert
-			_, mutationErr = collection.Insert(newThread.ID, newThread, nil)
-			if mutationErr != nil {
-				if errors.Is(mutationErr, gocb.ErrDocumentExists) {
-					// Another process created the document after we checked
-					cas = 0
-					// Fetch the document to get the CAS and existing content
-					getResult, err := collection.Get(newThread.ID, nil)
-					if err != nil {
-						log.Printf("Failed to fetch existing thread after insert conflict: %v", err)
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						return
-					}
-					cas = getResult.Cas()
-					err = getResult.Content(&existingThread)
-					if err != nil {
-						log.Printf("Failed to decode existing thread content after insert conflict: %v", err)
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						return
-					}
-					// Merge threads
-					mergedThread, err := mergeThreads(existingThread, newThread)
-					if err != nil {
-						log.Printf("Failed to merge threads: %v", err)
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						return
-					}
-					newThread = mergedThread
-					continue // Retry with Replace operation
-				} else {
-					log.Printf("Failed to insert thread: %v", mutationErr)
-					http.Error(w, mutationErr.Error(), http.StatusInternalServerError)
-					return
-				}
-			} else {
-				// Insert succeeded
-				log.Printf("Final saved thread (insert): ID=%s, MsgCount=%d", newThread.ID, newThread.MsgCount)
-				break
-			}
-		} else {
-			// Document exists, try to replace with CAS
-			replaceOptions := &gocb.ReplaceOptions{
-				Cas: cas,
-			}
-			_, mutationErr = collection.Replace(newThread.ID, newThread, replaceOptions)
-			if mutationErr != nil {
-				if errors.Is(mutationErr, gocb.ErrCasMismatch) {
-					// CAS mismatch occurred
-					if retries >= maxRetries {
-						log.Printf("Max retries reached for CAS mismatch: %v", mutationErr)
-						http.Error(w, "Failed to update thread due to concurrent modifications", http.StatusInternalServerError)
-						return
-					}
-
-					retries++
-					log.Printf("CAS mismatch detected. Retry %d/%d", retries, maxRetries)
-
-					// Re-fetch the latest document and its CAS
-					getResult, err := collection.Get(newThread.ID, nil)
-					if err != nil {
-						if errors.Is(err, gocb.ErrDocumentNotFound) {
-							// Document was deleted, try to insert
-							cas = 0
-							existingThread = Thread{} // Empty thread
-						} else {
-							log.Printf("Failed to re-fetch thread during CAS mismatch handling: %v", err)
-							http.Error(w, err.Error(), http.StatusInternalServerError)
-							return
-						}
-					} else {
-						cas = getResult.Cas()
-						err = getResult.Content(&existingThread)
-						if err != nil {
-							log.Printf("Failed to decode existing thread content during CAS mismatch handling: %v", err)
-							http.Error(w, err.Error(), http.StatusInternalServerError)
-							return
-						}
-					}
-
-					// Merge newThread with existingThread
-					mergedThread, err := mergeThreads(existingThread, newThread)
-					if err != nil {
-						log.Printf("Failed to merge threads: %v", err)
-						http.Error(w, err.Error(), http.StatusInternalServerError)
-						return
-					}
-					newThread = mergedThread
-					// Continue to retry with updated CAS
-					continue
-				} else if errors.Is(mutationErr, gocb.ErrDocumentNotFound) {
-					// Document was deleted, try to insert
-					cas = 0
-					existingThread = Thread{} // Empty thread
-					continue
-				} else {
-					log.Printf("Failed to replace thread: %v", mutationErr)
-					http.Error(w, mutationErr.Error(), http.StatusInternalServerError)
-					return
-				}
-			} else {
-				// Replace succeeded
-				log.Printf("Final saved thread (replace): ID=%s, MsgCount=%d", newThread.ID, newThread.MsgCount)
-				break
-			}
-		}
+	// Pass the newThread to be merged with CAS handling
+	finalThread, err := mergeThreads(existingThread, newThread)
+	if err != nil {
+		log.Printf("Error merging threads: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
 	}
+
+	// Handle the final save operation using CAS to ensure thread safety
+	saveThreadWithCAS(finalThread, cas, collection)
 
 	// Respond with the updated thread
 	responseJSON, err := json.Marshal(newThread)
@@ -524,7 +418,6 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 // mergeThreads merges the existing thread with the new thread, ensuring x_cat_content is append-only
 func mergeThreads(existingThread, newThread Thread) (Thread, error) {
-	// Merge messages, avoiding duplicates
 	messageMap := make(map[string]Message)
 
 	// Add all messages from existingThread to the map first
@@ -553,11 +446,14 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		return mergedMessages[i].CreatedAt < mergedMessages[j].CreatedAt
 	})
 
-	// Rebuild x_cat_content, ensuring we only append content for new messages
-	var allMessagesContent string
+	// Preserve existing x_cat_content and append only new content
+	var allMessagesContent string = existingThread.XConcatenatedContent
 	for _, msg := range mergedMessages {
-		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-		allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+		// Only append content for new messages that don't already exist in x_cat_content
+		if !strings.Contains(allMessagesContent, SanitizeContent(fmt.Sprintf("%s", msg.Content))) {
+			sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
+			allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+		}
 	}
 
 	var lastMsgAt int64
@@ -568,7 +464,6 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	}
 	mCount := len(mergedMessages)
 
-	// Construct the merged thread
 	mergedThread := Thread{
 		CreatedAt:                   existingThread.CreatedAt,
 		SeenAtFirst:                 existingThread.SeenAtFirst,
@@ -578,13 +473,61 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		Kind:                        existingThread.Kind,
 		Pubkey:                      existingThread.Pubkey,
 		Messages:                    mergedMessages,
-		XConcatenatedContent:        allMessagesContent,
+		XConcatenatedContent:        allMessagesContent, // Append new messages here
 		XLastProcessedAt:            existingThread.XLastProcessedAt,
 		XLastProcessedTokenPosition: existingThread.XLastProcessedTokenPosition,
 		XEmbeddings:                 existingThread.XEmbeddings,
 	}
 
 	return mergedThread, nil
+}
+
+func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection) {
+	const maxRetries = 5
+	retries := 0
+	for {
+		var mutationErr error
+		if cas == 0 {
+			// Document does not exist, try to insert
+			_, mutationErr = collection.Insert(thread.ID, thread, nil)
+			if mutationErr != nil {
+				if errors.Is(mutationErr, gocb.ErrDocumentExists) {
+					cas = 0
+					getResult, err := collection.Get(thread.ID, nil)
+					if err == nil {
+						cas = getResult.Cas()
+						err = getResult.Content(&existingThread)
+					}
+					if err == nil {
+						newThread, _ = mergeThreads(existingThread, thread)
+					}
+				}
+			} else {
+				break
+			}
+		} else {
+			replaceOptions := &gocb.ReplaceOptions{Cas: cas}
+			_, mutationErr = collection.Replace(thread.ID, thread, replaceOptions)
+			if mutationErr != nil {
+				if errors.Is(mutationErr, gocb.ErrCasMismatch) {
+					retries++
+					if retries >= maxRetries {
+						break
+					}
+					getResult, err := collection.Get(thread.ID, nil)
+					if err == nil {
+						cas = getResult.Cas()
+						err = getResult.Content(&existingThread)
+						if err == nil {
+							newThread, _ = mergeThreads(existingThread, thread)
+						}
+					}
+				}
+			} else {
+				break
+			}
+		}
+	}
 }
 
 func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster, alreadyQueriedIDs map[string]bool, foundMessageIDs map[string]bool) error {
