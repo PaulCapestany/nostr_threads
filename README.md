@@ -88,7 +88,7 @@ The primary goals of the `nostr_threads` project are:
 - Ensure a *threads* Couchbase bucket exists, as well as a *eventing-threads* bucket
 - Ensure the following Couchbase index exists in the *all-nostr-events* bucket:
 ```sql
-CREATE INDEX kind_and_event_lookup ON `default`:`all-nostr-events`.`_default`.`_default`(`kind`,(distinct (array (`t`[1]) for `t` in `tags` when ((`t`[0]) = "e") end)))
+CREATE INDEX kind_and_event_lookup ON `default`:`all-nostr-events`.`_default`.`_default`(`kind`,(distinct (array (`t`[1]) for `t` in `tags` when ((`t`[0]) = "e") end))) PARTITION BY HASH(META().id) WITH {"num_replica": 1}
 ```
 
 ### Installation
