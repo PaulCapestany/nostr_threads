@@ -339,8 +339,8 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 // mergeThreads merges the existing thread with the new thread, ensuring x_cat_content is append-only
 func mergeThreads(existingThread, newThread Thread) (Thread, error) {
+	log.Printf("mergeThreads called, existingThread: %v newThread: %v", existingThread.ID, newThread.ID)
 	messageMap := make(map[string]Message)
-	log.Println("calling mergeThreads")
 	// Add all messages from existingThread to the map first
 	for _, msg := range existingThread.Messages {
 		messageMap[msg.ID] = msg
