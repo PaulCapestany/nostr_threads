@@ -241,7 +241,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	alreadyQueriedIDs := make(map[string]bool)
 	foundMessageIDs := make(map[string]bool)
 	err = retryOperation(func() error {
-		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs, 50)
+		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs, 1000)
 	}, 3, messageIDsToQuery)
 
 	if err != nil {
@@ -475,6 +475,7 @@ func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection)
 	}
 }
 
+// messageFetcher concurrently fetches messages recursively using goroutines
 func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMessages *[]Message, cluster *gocb.Cluster, alreadyQueriedIDs map[string]bool, foundMessageIDs map[string]bool, maxGoroutines int) error {
 	if cluster == nil {
 		log.Println("Cluster connection is not initialized.")
@@ -493,9 +494,12 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 	semaphore := make(chan struct{}, maxGoroutines)  // Semaphore to limit goroutines
 
 	for _, id := range messageIDs {
+		mu.Lock()
 		if alreadyQueriedIDs[id] {
+			mu.Unlock()
 			continue // Skip IDs already marked as missing
 		}
+		mu.Unlock()
 
 		// Acquire a spot in the semaphore
 		semaphore <- struct{}{}
@@ -504,10 +508,7 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 		wg.Add(1)
 		go func(id string) {
 			defer wg.Done()
-
-			defer func() {
-				<-semaphore // Release the semaphore when the goroutine finishes
-			}()
+			defer func() { <-semaphore }() // Release the semaphore when the goroutine finishes
 
 			query := fmt.Sprintf(`WITH referencedMessages AS (
                 SELECT d.*
@@ -582,9 +583,11 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 			if !ok || len(tagSlice) < 2 || tagSlice[0] != "e" {
 				continue
 			}
-			if idStr, ok := tagSlice[1].(string); ok && !contains(foundMessageIDs, idStr) && !contains(alreadyQueriedIDs, idStr) {
+			if idStr, ok := tagSlice[1].(string); ok {
 				mu.Lock()
-				messageIDsToQuery = append(messageIDsToQuery, idStr)
+				if !contains(foundMessageIDs, idStr) && !contains(alreadyQueriedIDs, idStr) {
+					messageIDsToQuery = append(messageIDsToQuery, idStr)
+				}
 				mu.Unlock()
 			}
 		}
@@ -599,14 +602,9 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
 	return nil
 }
 
-func containsMessage(messages map[string]bool, id string) bool {
-	_, exists := messages[id]
-	return exists
-}
-
-func contains(ids map[string]bool, id string) bool {
-	_, exists := ids[id]
-	return exists
+func contains(m map[string]bool, id string) bool {
+	// Safely access map values within a locked context
+	return m[id]
 }
 
 func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, error) {
