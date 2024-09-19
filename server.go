@@ -86,17 +86,6 @@ func (ei EmbeddingInfo) MarshalJSON() ([]byte, error) {
 	return json.Marshal(finalJSON)
 }
 
-func init() {
-	// Log to standard output
-	log.SetOutput(os.Stdout)
-	// Set log flags for more detailed output
-	log.SetFlags(log.LstdFlags | log.Lshortfile)
-	go func() {
-		// This was for pprof profiling
-		log.Println(http.ListenAndServe("0.0.0.0:6060", nil))
-	}()
-}
-
 func main() {
 	// Initialize Couchbase connection
 	config.Setup()
