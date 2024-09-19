@@ -172,12 +172,6 @@ const trustOlderTimestamps int64 = 1725897900 // Sep 9, 2024 4:05 PM as Unix tim
 func isMessageTimestampTrustworthy(messageCreatedAt int64, lastMsgAt int64, seenAtFirst *int64, parentCreatedAt *int64, parentSeenAtFirst *int64) bool {
 	// Parent-child validation: A child message cannot precede its parent in either created_at or _seen_at_first.
 	if parentCreatedAt != nil && messageCreatedAt < *parentCreatedAt {
-		log.Printf("Message created_at %d is earlier than its parent's created_at %d; rejecting message.", messageCreatedAt, *parentCreatedAt)
-		return false
-	}
-
-	if parentSeenAtFirst != nil && seenAtFirst != nil && *seenAtFirst < *parentSeenAtFirst {
-		log.Printf("Message _seen_at_first %d is earlier than its parent's _seen_at_first %d; rejecting message.", *seenAtFirst, *parentSeenAtFirst)
 		return false
 	}
 
@@ -296,7 +290,9 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 
 		// Trust the message if it passes the universal trust checks and update the trust flag
 		msg.XTrustworthy = isMessageTimestampTrustworthy(msg.CreatedAt, existingThread.LastMsgAt, &msg.SeenAtFirst, parentCreatedAt, parentSeenAtFirst)
-
+		if !msg.XTrustworthy {
+			log.Printf("Message %v for payload %v is not trustworthy; rejecting message.", msg.ID, payload.ID)
+		}
 		// Save the updated message back into the slice
 		threadedProcessedMessages[i] = msg
 	}
@@ -304,7 +300,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	// Update last_msg_at based on the latest trustworthy message
 	var lastMsgAt int64
 	for _, msg := range threadedProcessedMessages {
-		if msg.CreatedAt > lastMsgAt {
+		if msg.XTrustworthy && msg.CreatedAt > lastMsgAt {
 			lastMsgAt = msg.CreatedAt
 		}
 	}
@@ -355,7 +351,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 // mergeThreads merges the existing thread with the new thread, ensuring x_cat_content is append-only
 func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	messageMap := make(map[string]Message)
-
+	log.Println("calling mergeThreads")
 	// Add all messages from existingThread to the map first
 	for _, msg := range existingThread.Messages {
 		messageMap[msg.ID] = msg
@@ -392,9 +388,10 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		}
 	}
 
+	// Update last_msg_at based on the latest trustworthy message
 	var lastMsgAt int64
 	for _, msg := range mergedMessages {
-		if msg.CreatedAt > lastMsgAt {
+		if msg.XTrustworthy && msg.CreatedAt > lastMsgAt {
 			lastMsgAt = msg.CreatedAt
 		}
 	}
@@ -419,6 +416,8 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 }
 
 func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection) {
+	log.Printf("calling saveThreadWithCAS for thread: %v", thread.ID)
+
 	const maxRetries = 5
 	retries := 0
 	for {
@@ -504,7 +503,7 @@ func messageFetcher(ctx context.Context, messageIDs []string, allUniqueThreadMes
             USE INDEX (kind_and_event_lookup USING GSI)
             WHERE refMessage.kind = 1 AND (ANY t IN refMessage.tags SATISFIES t[0] = "e" AND t[1] = "%s" END)
         )
-        SELECT message.content, message.created_at, message._seen_at_first, message.id, message.kind, message.pubkey, message.sig, message.tags
+        SELECT message.content, message.created_at, message._seen_at_first, message.id, message.kind, message.pubkey, message.sig, message.tags, message.x_trustworthy
         FROM referencedMessages AS message`, id, id)
 
 		results, err := cluster.Query(query, nil)
