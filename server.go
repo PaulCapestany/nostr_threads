@@ -23,70 +23,6 @@ import (
 	"github.com/gorilla/mux"
 )
 
-// JSON structure for our thread document:
-// {
-// 	"_seen_at_first": 1726153406,
-// 	"created_at": 1726153405,
-// 	"id": "606ecbb5ce7de4ec4863b62abdd04b6af560d4d929d45a622bd0e579a0259db6",
-// 	"kind": 1,
-// 	"last_msg_at": 1726153422,
-// 	"m_count": 2,
-// 	"messages": [
-// 	  {
-// 		"_seen_at_first": 1726153406,
-// 		"content": "first message",
-// 		"created_at": 1726153405,
-// 		"depth": 1,
-// 		"id": "606ecbb5ce7de4ec4863b62abdd04b6af560d4d929d45a622bd0e579a0259db6",
-// 		"kind": 1,
-// 		"parent_id": "",
-// 		"pubkey": "a9868931824e08267706de25cedf822be7ea252d234475732f99e32a1cef64e9",
-// 		"sig": "644ff9f6f2ff86a2a406c6ed732f5ec8f80a8b049d324f3cc8048d7ef9557600c8a5e0d72ed1fae3ecf690761d0c2286484e056916f934ba57cbb7ed63cd16b0",
-// 		"tags": []
-// 	  },
-// 	  {
-// 		"_seen_at_first": 1726153422,
-// 		"content": "second message",
-// 		"created_at": 1726153422,
-// 		"depth": 2,
-// 		"id": "d539e32973efcd3dfd99d31cbd0228c5dba18e364d2502b0d45e96fe2f0413b7",
-// 		"kind": 1,
-// 		"parent_id": "606ecbb5ce7de4ec4863b62abdd04b6af560d4d929d45a622bd0e579a0259db6",
-// 		"pubkey": "a9868931824e08267706de25cedf822be7ea252d234475732f99e32a1cef64e9",
-// 		"sig": "57160f8f65439220a0bfef7a191ce4e14492a86999f4215833510cf0535868fd9cefbc8f7d0db81a4ec69979ae1c3aef10b60b8487939b0d1b81c32fae9512dc",
-// 		"tags": [
-// 		  [
-// 			"e",
-// 			"606ecbb5ce7de4ec4863b62abdd04b6af560d4d929d45a622bd0e579a0259db6",
-// 			"wss://relay.primal.net",
-// 			"root"
-// 		  ],
-// 		  [
-// 			"p",
-// 			"a9868931824e08267706de25cedf822be7ea252d234475732f99e32a1cef64e9"
-// 		  ]
-// 		]
-// 	  }
-// 	],
-// 	"pubkey": "a9868931824e08267706de25cedf822be7ea252d234475732f99e32a1cef64e9",
-// 	"x_cat_content": "first message  second message  ",
-// 	"x_last_processed_at": 1726153422,
-// 	"x_last_processed_token_position": 6,
-// 	"x_embeddings": {
-// 	  "mxbai-embed-large": {
-// 		"mxbai-embed-large-embeddings": [
-// 		  [0.019370565,-0.019032586],
-// 		  [-0.123124121,0.091284109]
-// 		]
-// 	  },
-// 	  "nomic-embed-text": {
-// 		"nomic-embed-text-embeddings": [
-// 		  [-0.16920707,-0.019894164]
-// 		]
-// 	  }
-// 	}
-// }
-
 // nostr_threads flow
 // gets an arbitrary message ID, first checks if it's already in the all-nostr-events bucket, if not, uses nak to fetch it
 
@@ -492,17 +428,21 @@ func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection)
 			_, mutationErr = collection.Insert(thread.ID, thread, nil)
 			if mutationErr != nil {
 				if errors.Is(mutationErr, gocb.ErrDocumentExists) {
-					cas = 0
+					// Handle the document already existing by retrieving the current CAS and thread
 					getResult, err := collection.Get(thread.ID, nil)
 					if err == nil {
 						cas = getResult.Cas()
+						var existingThread Thread
 						err = getResult.Content(&existingThread)
-					}
-					if err == nil {
-						newThread, _ = mergeThreads(existingThread, thread)
+						if err == nil {
+							// Call mergeThreads here, since now we have both new and existing threads
+							thread, _ = mergeThreads(existingThread, thread)
+						}
 					}
 				}
 			} else {
+				// Insert succeeded
+				log.Printf("Final saved thread (insert): ID=%s, MsgCount=%d", thread.ID, thread.MsgCount)
 				break
 			}
 		} else {
@@ -514,16 +454,21 @@ func saveThreadWithCAS(thread Thread, cas gocb.Cas, collection *gocb.Collection)
 					if retries >= maxRetries {
 						break
 					}
+					// Retrieve the latest CAS and thread for the mismatch
 					getResult, err := collection.Get(thread.ID, nil)
 					if err == nil {
 						cas = getResult.Cas()
+						var existingThread Thread
 						err = getResult.Content(&existingThread)
 						if err == nil {
-							newThread, _ = mergeThreads(existingThread, thread)
+							// Call mergeThreads again to resolve the conflict
+							thread, _ = mergeThreads(existingThread, thread)
 						}
 					}
 				}
 			} else {
+				// Replace succeeded
+				log.Printf("Final saved thread (replace): ID=%s, MsgCount=%d", thread.ID, thread.MsgCount)
 				break
 			}
 		}
