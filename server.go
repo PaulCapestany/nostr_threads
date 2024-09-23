@@ -241,7 +241,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 	alreadyQueriedIDs := make(map[string]bool)
 	foundMessageIDs := make(map[string]bool)
 	err = retryOperation(func() error {
-		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs, 1000)
+		return messageFetcher(ctx, messageIDsToQuery, &allUniqueThreadMessages, cluster, alreadyQueriedIDs, foundMessageIDs, 50)
 	}, 3, messageIDsToQuery)
 
 	if err != nil {
@@ -343,8 +343,15 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	log.Printf("mergeThreads called, existingThread: %v newThread: %v", existingThread.ID, newThread.ID)
 
 	if existingThread.ID == "" {
-		log.Printf("No existing thread found, initializing new thread")
-		return newThread, nil
+		existingThread = newThread
+		// Initialize XConcatenatedContent for a new thread
+		var newContent strings.Builder
+		for _, msg := range newThread.Messages {
+			sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
+			newContent.WriteString(sanitizedContent + "  ")
+		}
+		existingThread.XConcatenatedContent = newContent.String()
+		return existingThread, nil
 	}
 
 	messageMap := make(map[string]Message)
@@ -375,12 +382,13 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	})
 
 	// Preserve existing x_cat_content and append only new content
-	var allMessagesContent string = existingThread.XConcatenatedContent
+	var allMessagesContent strings.Builder
+	allMessagesContent.WriteString(existingThread.XConcatenatedContent) // Preserve existing content
 	for _, msg := range mergedMessages {
 		// Only append content for new messages that don't already exist in x_cat_content
-		if !strings.Contains(allMessagesContent, SanitizeContent(fmt.Sprintf("%s", msg.Content))) {
+		if !strings.Contains(allMessagesContent.String(), SanitizeContent(fmt.Sprintf("%s", msg.Content))) {
 			sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-			allMessagesContent += fmt.Sprintf("%s  ", sanitizedContent)
+			allMessagesContent.WriteString(sanitizedContent + "  ")
 		}
 	}
 
@@ -402,7 +410,7 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		Kind:                        existingThread.Kind,
 		Pubkey:                      existingThread.Pubkey,
 		Messages:                    mergedMessages,
-		XConcatenatedContent:        allMessagesContent, // Append new messages here
+		XConcatenatedContent:        allMessagesContent.String(), // Properly append new content here
 		XLastProcessedAt:            existingThread.XLastProcessedAt,
 		XLastProcessedTokenPosition: existingThread.XLastProcessedTokenPosition,
 		XEmbeddings:                 existingThread.XEmbeddings,
