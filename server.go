@@ -62,7 +62,7 @@ type Thread struct {
 
 // EmbeddingInfo holds the embeddings and token position for a model
 type EmbeddingInfo struct {
-	Embeddings map[string][][]float32 `json:"-"` // Use map for dynamic field
+	Embeddings map[string][][]float64 `json:"-"` // Use map for dynamic field
 }
 
 // MarshalJSON will handle the dynamic JSON structure for embeddings
