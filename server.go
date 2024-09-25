@@ -32,13 +32,13 @@ type Message struct {
 	CreatedAt   int64         `json:"created_at"`
 	ID          string        `json:"id"`
 	Content     interface{}   `json:"content"`
-	Kind        int           `json:"kind"`
+	Kind        int64         `json:"kind"`
 	Pubkey      string        `json:"pubkey"`
 	Sig         string        `json:"sig"`
 	Tags        []interface{} `json:"tags"`
 	// NOTE: ParentID and Depth fields are not present in the JSON payload, we have to recursively search/construct them
 	ParentID     string `json:"parent_id"`
-	Depth        int    `json:"depth"`
+	Depth        int64  `json:"depth"`
 	XTrustworthy bool   `json:"x_trustworthy"`
 }
 
@@ -49,20 +49,20 @@ type Thread struct {
 	CreatedAt   int64     `json:"created_at"`
 	LastMsgAt   int64     `json:"last_msg_at"`
 	SeenAtFirst int64     `json:"_seen_at_first"`
-	MsgCount    int       `json:"m_count"`
-	Kind        int       `json:"kind"`
+	MsgCount    int64     `json:"m_count"`
+	Kind        int64     `json:"kind"`
 	Pubkey      string    `json:"pubkey"`
 	Messages    []Message `json:"messages"`
 	// NOTE: fields starting with "x_" may or may not already be present in the JSON payload
 	XConcatenatedContent        string                   `json:"x_cat_content"`
 	XLastProcessedAt            int64                    `json:"x_last_processed_at"`
-	XLastProcessedTokenPosition int                      `json:"x_last_processed_token_position"`
+	XLastProcessedTokenPosition int64                    `json:"x_last_processed_token_position"`
 	XEmbeddings                 map[string]EmbeddingInfo `json:"x_embeddings"`
 }
 
 // EmbeddingInfo holds the embeddings and token position for a model
 type EmbeddingInfo struct {
-	Embeddings map[string][][]float64 `json:"-"` // Use map for dynamic field
+	Embeddings map[string][][]float32 `json:"-"` // Use map for dynamic field
 }
 
 // MarshalJSON will handle the dynamic JSON structure for embeddings
@@ -301,7 +301,7 @@ func UpdateThreadHandler(w http.ResponseWriter, r *http.Request, cluster *gocb.C
 		CreatedAt:   threadedProcessedMessages[0].CreatedAt,
 		SeenAtFirst: threadedProcessedMessages[0].SeenAtFirst,
 		LastMsgAt:   lastMsgAt,
-		MsgCount:    mCount,
+		MsgCount:    int64(mCount),
 		ID:          threadedProcessedMessages[0].ID,
 		Kind:        threadedProcessedMessages[0].Kind,
 		Pubkey:      threadedProcessedMessages[0].Pubkey,
@@ -405,7 +405,7 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		CreatedAt:                   existingThread.CreatedAt,
 		SeenAtFirst:                 existingThread.SeenAtFirst,
 		LastMsgAt:                   lastMsgAt,
-		MsgCount:                    mCount,
+		MsgCount:                    int64(mCount),
 		ID:                          existingThread.ID,
 		Kind:                        existingThread.Kind,
 		Pubkey:                      existingThread.Pubkey,
@@ -700,7 +700,7 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 
 			if !processed {
 				// Case c: Message has multiple etags and none of them have etag[3] == "reply"
-				var maxDepth int
+				var maxDepth int64
 				var parentMsg *Message
 				for _, etag := range etags {
 					if msg := findMessageByID(messagesNestedInAThread, etag[1]); msg != nil && msg.Depth > maxDepth {
