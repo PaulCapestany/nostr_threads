@@ -358,8 +358,13 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 	var allMessagesContent strings.Builder
 	allMessagesContent.WriteString(existingThread.XConcatenatedContent) // Preserve existing content
 	for _, msg := range mergedMessages {
-		sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
-		allMessagesContent.WriteString(sanitizedContent + "  ")
+		// TODO: need to refine this logic, e.g. if someone replies "lol" and it was already in x_cat_content, it doesn't get added
+		// Only append content for new messages that don't already exist in x_cat_content
+		if !strings.Contains(allMessagesContent.String(), SanitizeContent(fmt.Sprintf("%s", msg.Content))) {
+			sanitizedContent := SanitizeContent(fmt.Sprintf("%s", msg.Content))
+			allMessagesContent.WriteString(sanitizedContent + "  ")
+		}
+
 	}
 
 	// Update last_msg_at based on the latest trustworthy message
