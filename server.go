@@ -344,7 +344,7 @@ func mergeThreads(existingThread, newThread Thread) (Thread, error) {
 		}
 	}
 
-	// Sort messages by created_at
+	// Sort messages by created_at (should x_trustworthy come into play?)
 	mergedMessages := make([]Message, 0, len(messageMap))
 	for _, msg := range messageMap {
 		mergedMessages = append(mergedMessages, msg)
