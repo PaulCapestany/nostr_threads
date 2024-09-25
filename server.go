@@ -26,6 +26,23 @@ import (
 // nostr_threads flow
 // gets an arbitrary message ID, first checks if it's already in the all-nostr-events bucket, if not, uses nak to fetch it
 
+// Thread represents a flattened Nostr thread structure
+type Thread struct {
+	// NOTE: a thread's CreatedAt, ID, Kind, and Pubkey are the same as the first message in the thread (the root Nostr message)
+	ID                          string                 `json:"id"`
+	CreatedAt                   int64                  `json:"created_at"`
+	LastMsgAt                   int64                  `json:"last_msg_at"`
+	SeenAtFirst                 int64                  `json:"_seen_at_first"`
+	MsgCount                    int64                  `json:"m_count"`
+	Kind                        int64                  `json:"kind"`
+	Pubkey                      string                 `json:"pubkey"`
+	Messages                    []Message              `json:"messages"`
+	XConcatenatedContent        string                 `json:"x_cat_content"`
+	XLastProcessedAt            int64                  `json:"x_last_processed_at"`
+	XLastProcessedTokenPosition int64                  `json:"x_last_processed_token_position"`
+	XEmbeddings                 map[string]interface{} `json:"x_embeddings"`
+}
+
 // Message represents a Nostr message structure
 type Message struct {
 	SeenAtFirst int64         `json:"_seen_at_first"`
@@ -40,50 +57,6 @@ type Message struct {
 	ParentID     string `json:"parent_id"`
 	Depth        int64  `json:"depth"`
 	XTrustworthy bool   `json:"x_trustworthy"`
-}
-
-// Thread represents a flattened Nostr thread structure
-type Thread struct {
-	// NOTE: a thread's CreatedAt, ID, Kind, and Pubkey are the same as the first message in the thread (the root Nostr message)
-	ID          string    `json:"id"`
-	CreatedAt   int64     `json:"created_at"`
-	LastMsgAt   int64     `json:"last_msg_at"`
-	SeenAtFirst int64     `json:"_seen_at_first"`
-	MsgCount    int64     `json:"m_count"`
-	Kind        int64     `json:"kind"`
-	Pubkey      string    `json:"pubkey"`
-	Messages    []Message `json:"messages"`
-	// NOTE: fields starting with "x_" may or may not already be present in the JSON payload
-	XConcatenatedContent        string                   `json:"x_cat_content"`
-	XLastProcessedAt            int64                    `json:"x_last_processed_at"`
-	XLastProcessedTokenPosition int64                    `json:"x_last_processed_token_position"`
-	XEmbeddings                 map[string]EmbeddingInfo `json:"x_embeddings"`
-}
-
-// EmbeddingInfo holds the embeddings and token position for a model
-type EmbeddingInfo struct {
-	Embeddings map[string][][]float32 `json:"-"` // Use map for dynamic field
-}
-
-// MarshalJSON will handle the dynamic JSON structure for embeddings
-func (ei EmbeddingInfo) MarshalJSON() ([]byte, error) {
-	// Create a temporary struct to hold the final JSON
-
-	// Manually construct the embeddings field with the model name as the key
-	embeddingsField := make(map[string]interface{})
-	for modelName, embeddings := range ei.Embeddings {
-		// Generate the key by appending the model name
-		key := fmt.Sprintf("%s-embeddings", modelName)
-		embeddingsField[key] = embeddings
-	}
-
-	// Convert temp struct into a map
-	finalJSON := make(map[string]interface{})
-	for key, value := range embeddingsField {
-		finalJSON[key] = value
-	}
-
-	return json.Marshal(finalJSON)
 }
 
 func main() {
