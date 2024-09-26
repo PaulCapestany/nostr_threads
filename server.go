@@ -627,6 +627,16 @@ func processMessageThreading(allUniqueThreadMessages []Message) ([]Message, erro
 		// TODO: grab message from another relay?
 	}
 
+	// NOTE: this is a very naïve anti-spam measure
+	// **Check if the root message contains the "invalid" tag**
+	for _, tag := range originalMessage.Tags {
+		tagSlice, ok := tag.([]interface{})
+		if ok && len(tagSlice) > 1 && tagSlice[0] == "invalid" {
+			log.Printf("Skipping thread assembly because root message contains invalid tag: %v", originalMessage.ID)
+			return nil, errors.New("root message contains \"invalid\" tag")
+		}
+	}
+
 	originalMessage.Depth = 1
 	messagesNestedInAThread = append(messagesNestedInAThread, *originalMessage)
 	allUniqueThreadMessages = removeMessage(allUniqueThreadMessages, originalMessage.ID)
