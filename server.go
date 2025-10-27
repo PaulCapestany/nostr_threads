@@ -75,9 +75,11 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 		Status:  "ok",
 		Version: serviceVersion,
 	}
-	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		log.Printf("failed to write health response: %v", err)
+	if r.URL.Query().Has("pretty") {
+		writePrettyJSON(w, resp)
+		return
 	}
+	writeJSON(w, resp)
 }
 
 func serverAddr() string {
@@ -85,6 +87,24 @@ func serverAddr() string {
 		return addr
 	}
 	return "0.0.0.0:8081"
+}
+
+func writeJSON(w http.ResponseWriter, payload any) {
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Printf("failed to encode JSON response: %v", err)
+	}
+}
+
+func writePrettyJSON(w http.ResponseWriter, payload any) {
+	data, err := json.MarshalIndent(payload, "", "  ")
+	if err != nil {
+		log.Printf("failed to encode pretty JSON response: %v", err)
+		writeJSON(w, payload)
+		return
+	}
+	if _, err := w.Write(append(data, '\n')); err != nil {
+		log.Printf("failed to write pretty JSON response: %v", err)
+	}
 }
 
 func main() {
