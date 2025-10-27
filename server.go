@@ -67,6 +67,13 @@ func healthHandler(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func serverAddr() string {
+	if addr := strings.TrimSpace(os.Getenv("NOSTR_THREADS_ADDR")); addr != "" {
+		return addr
+	}
+	return "0.0.0.0:8081"
+}
+
 func main() {
 	// Initialize Couchbase connection
 	config.Setup()
@@ -75,6 +82,8 @@ func main() {
 		log.Fatalf("Error initializing Couchbase: %v", err)
 	}
 	defer cluster.Close(nil)
+
+	addr := serverAddr()
 
 	// Set up the HTTP server
 	r := mux.NewRouter()
@@ -85,7 +94,7 @@ func main() {
 
 	srv := &http.Server{
 		Handler:      r,
-		Addr:         "0.0.0.0:8081",
+		Addr:         addr,
 		WriteTimeout: 60 * time.Second,
 		ReadTimeout:  60 * time.Second,
 		IdleTimeout:  90 * time.Second,
@@ -114,9 +123,9 @@ func main() {
 		close(done)
 	}()
 
-	log.Printf("Starting server on :8081 (version %s)", serviceVersion)
+	log.Printf("Starting server on %s (version %s)", addr, serviceVersion)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		log.Fatalf("Could not listen on :8081: %v\n", err)
+		log.Fatalf("Could not listen on %s: %v\n", addr, err)
 	}
 
 	<-done

@@ -115,11 +115,17 @@ CREATE INDEX events_for_pubkey ON `default`:`all-nostr-events`.`_default`.`_defa
     ```shell
     nostr_threads
     ```
-2. Confirm the service is running:
+2. Optionally override the bind address/port:
+    ```shell
+    NOSTR_THREADS_ADDR=127.0.0.1:9000 nostr_threads
+    ```
+3. Confirm the service is running:
     ```shell
     curl http://localhost:8081/healthz
     ```
-3. Configure `nostr_site` to interact with `nostr_threads`.
+4. Configure `nostr_site` to interact with `nostr_threads`.
+
+By default the service listens on `0.0.0.0:8081` when `NOSTR_THREADS_ADDR` is unset.
 
 ### Future Directions
 
