@@ -3,7 +3,7 @@
 # Use a smaller base image for the builder stage
 FROM golang:1.23-alpine AS builder
 
-# Install git, as it's needed for cloning the nak repository
+# Install git for fetching private modules
 RUN apk add --no-cache git
 
 # Set environment variables for private repo access
@@ -21,15 +21,8 @@ COPY go.mod go.sum ./nostr_threads/
 # Use a build cache for Go modules
 RUN --mount=type=cache,target=/go/pkg/mod cd nostr_threads && go mod download
 
-# Clone the `nak` repository and download dependencies
-RUN git clone https://github.com/fiatjaf/nak.git && cd nak && go mod download
-
 # Copy the entire source code for `nostr_threads`
 COPY . ./nostr_threads
-
-# Build the `nak` binary
-WORKDIR /app/nak
-RUN --mount=type=cache,target=/root/.cache/go-build go build -trimpath -ldflags '-s -w' -o /app/bin/nak .
 
 # Build the `nostr_threads` binary
 WORKDIR /app/nostr_threads
@@ -41,9 +34,8 @@ FROM gcr.io/distroless/base
 # Set the working directory in the final image
 WORKDIR /app
 
-# Copy the built binaries from the builder stage
+# Copy the built binary from the builder stage
 COPY --from=builder /app/bin/nostr_threads /usr/local/bin/nostr_threads
-COPY --from=builder /app/bin/nak /usr/local/bin/nak
 
 # Expose necessary ports
 EXPOSE 8081

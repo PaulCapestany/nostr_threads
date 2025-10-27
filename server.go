@@ -24,7 +24,7 @@ import (
 )
 
 // nostr_threads flow
-// gets an arbitrary message ID, first checks if it's already in the all-nostr-events bucket, if not, uses nak to fetch it
+// gets an arbitrary message ID, first checks if it's already in the all-nostr-events bucket
 
 // Thread represents a flattened Nostr thread structure
 type Thread struct {
