@@ -59,10 +59,19 @@ type Message struct {
 	XTrustworthy bool   `json:"x_trustworthy"`
 }
 
+type healthResponse struct {
+	Status  string `json:"status"`
+	Version string `json:"version"`
+}
+
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+	resp := healthResponse{
+		Status:  "ok",
+		Version: serviceVersion,
+	}
+	if err := json.NewEncoder(w).Encode(resp); err != nil {
 		log.Printf("failed to write health response: %v", err)
 	}
 }

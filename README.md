@@ -127,6 +127,8 @@ CREATE INDEX events_for_pubkey ON `default`:`all-nostr-events`.`_default`.`_defa
 
 By default the service listens on `0.0.0.0:8081` when `NOSTR_THREADS_ADDR` is unset.
 
+The health endpoint returns the JSON status along with the service version for quick diagnostics.
+
 ### Future Directions
 
 For now, `nostr_threads` is meant as the quickest way to get to a demo going for a proof of concept. Eventually it might make sense to use a different approach, e.g. modifying and enhancing individual Nostr messages one by one as they come in (importantly potentially adding a "thread_id" to each one). But, there might be tradeoffs that need to be carefully considered, so, TBD.
