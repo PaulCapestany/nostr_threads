@@ -123,6 +123,7 @@ CREATE INDEX events_for_pubkey ON `default`:`all-nostr-events`.`_default`.`_defa
     ```shell
     curl http://localhost:8081/healthz
     ```
+   - `HEAD` requests are also supported for lightweight probes.
 4. Configure `nostr_site` to interact with `nostr_threads`.
 
 By default the service listens on `0.0.0.0:8081` when `NOSTR_THREADS_ADDR` is unset.
