@@ -59,6 +59,14 @@ type Message struct {
 	XTrustworthy bool   `json:"x_trustworthy"`
 }
 
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(map[string]string{"status": "ok"}); err != nil {
+		log.Printf("failed to write health response: %v", err)
+	}
+}
+
 func main() {
 	// Initialize Couchbase connection
 	config.Setup()
@@ -73,6 +81,7 @@ func main() {
 	r.HandleFunc("/nostr/update_thread", func(w http.ResponseWriter, r *http.Request) {
 		UpdateThreadHandler(w, r, cluster)
 	}).Methods("POST")
+	r.HandleFunc("/healthz", healthHandler).Methods("GET")
 
 	srv := &http.Server{
 		Handler:      r,
@@ -105,7 +114,7 @@ func main() {
 		close(done)
 	}()
 
-	log.Println("Starting server on :8081")
+	log.Printf("Starting server on :8081 (version %s)", serviceVersion)
 	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		log.Fatalf("Could not listen on :8081: %v\n", err)
 	}

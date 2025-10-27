@@ -115,7 +115,11 @@ CREATE INDEX events_for_pubkey ON `default`:`all-nostr-events`.`_default`.`_defa
     ```shell
     nostr_threads
     ```
-2. Configure `nostr_site` to interact with `nostr_threads`.
+2. Confirm the service is running:
+    ```shell
+    curl http://localhost:8081/healthz
+    ```
+3. Configure `nostr_site` to interact with `nostr_threads`.
 
 ### Future Directions
 
@@ -132,4 +136,3 @@ For any questions or suggestions, please contact [Paul](http://github.com/paulca
 
 
 ---
-
