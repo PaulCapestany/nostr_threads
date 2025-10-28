@@ -16,8 +16,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/paulcapestany/nostr_threads/internal/config"
-	"github.com/paulcapestany/nostr_threads/internal/couchbase"
+	"github.com/paulcapestany/nostr_shared/config"
+	"github.com/paulcapestany/nostr_shared/couchbase"
 
 	"github.com/couchbase/gocb/v2"
 	"github.com/gorilla/mux"
