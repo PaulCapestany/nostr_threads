@@ -5,7 +5,6 @@ go 1.23
 require (
 	github.com/couchbase/gocb/v2 v2.9.1
 	github.com/gorilla/mux v1.8.1
-	github.com/paulcapestany/nostr_shared v0.1.1
 )
 
 require (
