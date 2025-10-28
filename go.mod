@@ -1,6 +1,8 @@
 module github.com/paulcapestany/nostr_threads
 
-go 1.23
+go 1.24
+
+toolchain go1.24.6
 
 require (
 	github.com/couchbase/gocb/v2 v2.9.1

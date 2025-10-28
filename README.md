@@ -81,7 +81,7 @@ The primary goals of the `nostr_threads` project are:
 ## Getting Started
 
 ### Prerequisites
-- [Go 1.22.2](https://golang.org/dl/)
+- [Go 1.24.6](https://golang.org/dl/)
 - [Couchbase Server 7.6](https://www.couchbase.com/downloads)
 - [gocb v2.8.1](https://github.com/couchbase/gocb)
 - [Nostr protocol specification](https://github.com/nostr-protocol/nips)
