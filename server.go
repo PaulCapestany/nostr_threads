@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -108,6 +109,15 @@ func writePrettyJSON(w http.ResponseWriter, payload any) {
 }
 
 func main() {
+	showVersion := flag.Bool("version", false, "print service version and exit")
+	shortVersion := flag.Bool("v", false, "print service version and exit")
+	flag.Parse()
+
+	if *showVersion || *shortVersion {
+		fmt.Println(serviceVersion)
+		return
+	}
+
 	// Initialize Couchbase connection
 	config.Setup()
 	cluster, _, _, _, err := couchbase.InitializeCouchbase()

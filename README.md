@@ -119,6 +119,7 @@ CREATE INDEX events_for_pubkey ON `default`:`all-nostr-events`.`_default`.`_defa
     ```shell
     nostr_threads
     ```
+   - Use `nostr_threads --version` to print the current build version.
 2. Optionally override the bind address/port:
     ```shell
     NOSTR_THREADS_ADDR=127.0.0.1:9000 nostr_threads
