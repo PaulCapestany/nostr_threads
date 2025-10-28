@@ -1,0 +1,7 @@
+.git
+.gitignore
+.vscode
+.DS_Store
+_ignore
+README.md
+nostr_threads_event_func.json

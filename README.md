@@ -108,7 +108,11 @@ CREATE INDEX events_for_pubkey ON `default`:`all-nostr-events`.`_default`.`_defa
 3. Build/test:
    ```shell
    go mod tidy && go install ./... && go test -v
-   ``` 
+   ```
+4. (Optional) Build the container image locally:
+   ```shell
+   docker build -t nostr_threads:latest .
+   ```
 
 ### Usage
 1. Start the service:
