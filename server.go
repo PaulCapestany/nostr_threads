@@ -133,7 +133,7 @@ func main() {
 	r.HandleFunc("/nostr/update_thread", func(w http.ResponseWriter, r *http.Request) {
 		UpdateThreadHandler(w, r, cluster)
 	}).Methods("POST")
-	r.HandleFunc("/healthz", healthHandler).Methods("GET")
+	r.HandleFunc("/healthz", healthHandler).Methods("GET", "HEAD")
 
 	srv := &http.Server{
 		Handler:      r,

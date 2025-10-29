@@ -1,3 +1,3 @@
 package main
 
-const serviceVersion = "0.1.12"
+const serviceVersion = "0.1.13"
